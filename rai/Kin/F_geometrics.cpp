@@ -36,6 +36,26 @@ void F_AboveBox::phi2(arr& y, arr& J, const FrameL& F) {
 
 //===========================================================================
 
+void F_StandingAbove::phi2(arr& y, arr& J, const FrameL& F) {
+  CHECK_EQ(order, 0, "");
+  CHECK_EQ(F.N, 2, "");
+
+  rai::Shape* box=F.elem(0)->shape;
+  CHECK(box, "I need a shape as second frame!");
+  CHECK_EQ(box->type(), rai::ST_ssBox, "the 2nd shape needs to be a box"); //s1 should be the board
+  Value pos = F_PositionRel()
+              .eval({F.elem(1), F.elem(0)}); //TODO - that's somewhat awkward?
+  arr proj({2,3}, {1,0,0,0,1,0});
+  pos.y = proj * pos.y;
+  pos.J = proj * pos.J;
+  arr range = { .5*box->size(0)-margin, .5*box->size(1)-margin };
+
+  y.setBlockVector(pos.y - range, -pos.y - range);
+  J.setBlockMatrix(pos.J, -pos.J);
+}
+
+//===========================================================================
+
 
 void F_InsideBox::phi2(arr& y, arr& J, const FrameL& F) {
   CHECK_EQ(F.N, 2, "");
