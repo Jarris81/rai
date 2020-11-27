@@ -20,6 +20,15 @@ struct F_AboveBox : Feature {
 
 //===========================================================================
 
+struct F_StandingAbove : Feature {
+  double margin=.0;
+  virtual void phi2(arr& y, arr& J, const FrameL& F);
+  virtual uint dim_phi2(const FrameL& F) { return 4; }
+};
+
+//===========================================================================
+
+
 struct F_InsideBox : Feature {
   rai::Vector ivec;       ///< additional position or vector
   double margin;

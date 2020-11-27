@@ -99,8 +99,9 @@ ptr<Feature> symbols2feature(FeatureSymbol feat, const StringA& frames, const ra
   else if(feat==FS_standingAbove) {
 //    double h = .5*(shapeSize(C, frames(0)) + shapeSize(C, frames(1)));
 //    f = make_shared<TM_Default>(TMT_posDiff, C, frames(0), rai::Vector(0., 0., h), frames(1), NoVector);
-    NIY;
-    f->scale = arr({1, 3}, {0., 0., 1.});
+    //NIY;
+    //f->scale = arr({1, 3}, {0., 0., 1.});
+    f==make_shared<F_StandingAbove>();
   }
 
   else if(feat==FS_position) {  f = make_shared<F_Position>();  } //f=make_shared<TM_Default>(TMT_pos, C, frames(0)); }
