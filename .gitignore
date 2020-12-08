@@ -138,3 +138,6 @@ srv_gen
 *Feedback.msg
 *Goal.msg
 *Result.msg
+
+%% IntelliJ
+.idea/*
