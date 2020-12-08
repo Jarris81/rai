@@ -9,6 +9,7 @@
 #pragma once
 
 #include "CtrlObjective.h"
+#include "CtrlSymCommand.h"
 #include "CtrlSet.h"
 
 #include "../KOMO/komo.h"
@@ -23,7 +24,7 @@ struct CtrlSolver : NonCopyable {
   rai::Graph optReport;
 
   rai::Array<shared_ptr<CtrlObjective>> objectives;    ///< list of objectives
-  rai::Array<StringA> symbolicCommands;
+  rai::Array<shared_ptr<CtrlSymCommand>> symbolicCommands;
 
   CtrlSolver(rai::Configuration& _C, double _tau, uint k_order=1);
   ~CtrlSolver();

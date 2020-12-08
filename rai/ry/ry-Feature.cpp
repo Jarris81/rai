@@ -50,6 +50,9 @@ void init_Feature(pybind11::module& m) {
     std::string s = self->shortTag(*C).p;
     return s;
   })
+  .def("get_FS", [](shared_ptr<Feature>& self) {
+    return self->fs;
+  })
   ;
 }
 
