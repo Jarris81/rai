@@ -25,7 +25,6 @@ void init_CtrlSet(pybind11::module& m) {
 
       .def("addSymbolicCommand", &CtrlSet::addSymbolicCommand)
 
-
   .def("canBeInitiated", [](std::shared_ptr<CtrlSet>& self, std::shared_ptr<rai::Configuration>& C) {
       return self->canBeInitiated(*C);
   })
@@ -35,7 +34,9 @@ void init_CtrlSet(pybind11::module& m) {
   })
 
   .def("getObjectives", [](std::shared_ptr<CtrlSet>& self){
-      //return self->objectives;
+      pybind11::list list;
+      for(const auto obj: self->getObjectives()) list.append(obj);
+      return list;
   })
 
   //.def("addSymbolicCommand", [](std::shared_ptr<CtrlSet>& self, const std::string& command){
@@ -43,8 +44,14 @@ void init_CtrlSet(pybind11::module& m) {
   //})
 
   ;
-
-  pybind11::class_<CtrlObjective, shared_ptr<CtrlObjective>>(m, "CtrlObjective");
+  pybind11::class_<CtrlObjective, shared_ptr<CtrlObjective>>(m, "CtrlObjective")
+    .def(pybind11::init<>())
+    .def("get_OT", [](std::shared_ptr<CtrlObjective>& self){
+      return self->type;
+  })
+    .def("feat", [](std::shared_ptr<CtrlObjective>& self){
+      return self->feat;
+  });
 
 };
 
