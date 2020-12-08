@@ -35,7 +35,7 @@ void init_CtrlSet(pybind11::module& m) {
   })
 
   .def("getObjectives", [](std::shared_ptr<CtrlSet>& self){
-      //return pybind11::array(self->objectives);
+      //return self->objectives;
   })
 
   //.def("addSymbolicCommand", [](std::shared_ptr<CtrlSet>& self, const std::string& command){
