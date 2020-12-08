@@ -7,7 +7,7 @@
     --------------------------------------------------------------  */
 
 #include "CtrlSet.h"
-
+#include "CtrlSymCommand.h"
 #include "CtrlTargets.h"
 
 ptr<CtrlObjective> CtrlSet::addObjective(const ptr<Feature>& f, ObjectiveType type, double transientStep) {
@@ -40,8 +40,16 @@ bool CtrlSet::isConverged(const rai::Configuration& Ctuple) const {
   return isFeasible(*this, Ctuple, false);
 }
 
-void CtrlSet::addSymbolicCommand(StringA command) {
-    symbolicCommands.append(command);
+void CtrlSet::addSymbolicCommand(StringA command, bool isImmediate) {
+
+  //rai::Frame *gripper = Ctuple.getFrame(command.elem(2));
+  //rai::Frame *object = Ctuple.getFrame(command.elem(3));
+  shared_ptr<CtrlSymCommand> ptr = make_shared<CtrlSymCommand>(CommandType(CLOSE_GRIPPER),
+                                                               isImmediate,
+                                                               command.elem(1),
+                                                               command.elem(2));
+
+  symbolicCommands.append(ptr);
 }
 
 bool isFeasible(const CtrlSet& CS, const rai::Configuration& Ctuple, bool initOnly, double eqPrecision) {
@@ -64,28 +72,15 @@ bool isFeasible(const CtrlSet& CS, const rai::Configuration& Ctuple, bool initOn
   }
   //also check symbolic commands
   for (const auto& sc : CS.symbolicCommands){
-      if(sc.elem(0) == "grasp"){
-          //if we check initiation, and command is not init, skip
-          if(sc.elem(1) != "init" && initOnly) continue;
-
-          rai::Frame* gripper = Ctuple.getFrame(sc.elem(2));
-          rai::Frame* object = Ctuple.getFrame(sc.elem(3));
-          // is object has as parent gripper, its grasping
-          if(object->parent != gripper) isFeasible = false;
-      }
-      if(sc.elem(0) == "open") {
-          //if we check initiation, and command is not init, skip
-          if (sc.elem(1) != "init" && initOnly) continue;
-
-          rai::Frame *gripper = Ctuple.getFrame(sc.elem(2));
-          rai::Frame *object = Ctuple.getFrame(sc.elem(3));
-          // is object has as parent gripper, its grasping
-          if (object->parent->name != "world") isFeasible = false;
-      }
-      if(!isFeasible) break;
+    // if not converged, and is condition, set is not feasible
+    if(sc->isCondition && !sc->isConverged(Ctuple)) isFeasible = false;
   }
 
   return isFeasible;
+}
+
+rai::Array<shared_ptr<CtrlObjective>> CtrlSet::getObjectives() {
+  return objectives;
 }
 
 CtrlSet operator+(const CtrlSet& A, const CtrlSet& B){

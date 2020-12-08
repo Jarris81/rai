@@ -99,13 +99,7 @@ void CtrlSolver::update(rai::Configuration& C) {
   }
   for(const auto& sc : symbolicCommands){
       //we only care about run
-      if(sc.elem(1) == "init") continue;
-      if(sc.elem(0) == "grasp"){
-          rai::Frame* gripper = C.getFrame(sc.elem(2));
-          rai::Frame* object = C.getFrame(sc.elem(3));
-          cout<<"Im grasping!!"<<endl;
-          C.attach(gripper, object);
-      }
+      if(!sc->isCondition) sc->run(C);
   }
 }
 

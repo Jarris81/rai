@@ -9,6 +9,7 @@
 #pragma once
 
 #include "CtrlObjective.h"
+#include "CtrlSymCommand.h"
 #include <Kin/feature.h>
 
 
@@ -17,13 +18,14 @@
 struct CtrlSet {
   rai::String name;
   rai::Array<shared_ptr<CtrlObjective>> objectives;    ///< list of objectives
-  rai::Array<StringA> symbolicCommands;
+
+  rai::Array<shared_ptr<CtrlSymCommand>> symbolicCommands; ///< list of symbolic commands
 
   CtrlSet(const char* _name=0) : name(_name) {}
   shared_ptr<CtrlObjective> addObjective(const ptr<Feature>& f, ObjectiveType type, double transientStep=-1.);
   shared_ptr<CtrlObjective> add_qControlObjective(uint order, double scale, const rai::Configuration& C);
 
-  void addSymbolicCommand(StringA command);
+  void addSymbolicCommand(StringA command, bool isImmediate);
 
 
 
@@ -35,16 +37,14 @@ struct CtrlSet {
 
   bool canBeInitiated(const rai::Configuration& Ctuple) const;
   bool isConverged(const rai::Configuration& Ctuple) const;
+  rai::Array<shared_ptr<CtrlObjective>> getObjectives();
 };
 
 //===========================================================================
 
 bool isFeasible(const CtrlSet& CS, const rai::Configuration& Ctuple, bool initOnly=true, double eqPrecision=1e-4);
 
+
+
 CtrlSet operator+(const CtrlSet& A, const CtrlSet& B);
 
-struct SymbolicCommand{
-
-    enum Command {CLOSE_GRIPPER, OPEN_GRIPPER};
-
-};
