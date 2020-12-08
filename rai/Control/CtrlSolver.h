@@ -24,6 +24,8 @@ struct CtrlSolver : NonCopyable {
 
   rai::Array<shared_ptr<CtrlObjective>> objectives;    ///< list of objectives
 
+  rai::Array<StringA> symbolicCommands;
+
   CtrlSolver(rai::Configuration& _C, double _tau, uint k_order=1);
   ~CtrlSolver();
 

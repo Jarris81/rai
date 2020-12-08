@@ -184,6 +184,10 @@ void init_Config(pybind11::module& m) {
     checkView(self);
   }, "")
 
+  .def("setCloseGripper", [](shared_ptr<rai::Configuration>& self, const char*  gripperFrameName, const double step) {
+    self->setCloseGripper(gripperFrameName, step);
+  }, "")
+
   .def("getFrameNames", [](shared_ptr<rai::Configuration>& self) {
     return I_conv(self->getFrameNames());
   },

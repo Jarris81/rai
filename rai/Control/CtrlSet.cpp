@@ -40,6 +40,10 @@ bool CtrlSet::isConverged(const rai::Configuration& Ctuple) const {
   return isFeasible(*this, Ctuple, false);
 }
 
+void CtrlSet::addSymbolicCommand(StringA command) {
+    symbolicCommands.append(command);
+}
+
 bool isFeasible(const CtrlSet& CS, const rai::Configuration& Ctuple, bool initOnly, double eqPrecision) {
   bool isFeasible=true;
   for(const auto& o: CS.objectives) {
@@ -58,6 +62,29 @@ bool isFeasible(const CtrlSet& CS, const rai::Configuration& Ctuple, bool initOn
     }
     if(!isFeasible) break;
   }
+  //also check symbolic commands
+  for (const auto& sc : CS.symbolicCommands){
+      if(sc.elem(0) == "grasp"){
+          //if we check initiation, and command is not init, skip
+          if(sc.elem(1) != "init" && initOnly) continue;
+
+          rai::Frame* gripper = Ctuple.getFrame(sc.elem(2));
+          rai::Frame* object = Ctuple.getFrame(sc.elem(3));
+          // is object has as parent gripper, its grasping
+          if(object->parent != gripper) isFeasible = false;
+      }
+      if(sc.elem(0) == "open") {
+          //if we check initiation, and command is not init, skip
+          if (sc.elem(1) != "init" && initOnly) continue;
+
+          rai::Frame *gripper = Ctuple.getFrame(sc.elem(2));
+          rai::Frame *object = Ctuple.getFrame(sc.elem(3));
+          // is object has as parent gripper, its grasping
+          if (object->parent->name != "world") isFeasible = false;
+      }
+      if(!isFeasible) break;
+  }
+
   return isFeasible;
 }
 
@@ -68,3 +95,8 @@ CtrlSet operator+(const CtrlSet& A, const CtrlSet& B){
   CS.objectives.setVectorBlock(B.objectives, A.objectives.N);
   return CS;
 }
+
+
+
+
+
