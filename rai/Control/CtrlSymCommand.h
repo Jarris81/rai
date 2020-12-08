@@ -5,13 +5,13 @@
 #pragma once
 
 #include "../Kin/kin.h"
-#pragma once
 
 #include "CtrlObjective.h"
 #include "CtrlSymCommand.h"
 #include <Kin/feature.h>
 
 enum CtrlSymCommandType {SC_CLOSE_GRIPPER, SC_OPEN_GRIPPER};
+
 
 struct CtrlSymCommand {
 

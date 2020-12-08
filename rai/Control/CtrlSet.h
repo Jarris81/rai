@@ -29,6 +29,7 @@ struct CtrlSet {
   shared_ptr<CtrlObjective> addObjective(const ptr<Feature>& f, ObjectiveType type, double transientStep=-1.);
   shared_ptr<CtrlObjective> add_qControlObjective(uint order, double scale, const rai::Configuration& C);
 
+<<<<<<< HEAD
   void addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate);
 
   operator rai::Array<shared_ptr<CtrlObjective>>&(){ return objectives; }
@@ -47,14 +48,5 @@ struct CtrlSet {
 bool isFeasible(const CtrlSet& CS, const rai::Configuration& pathConfig, bool initOnly=true, double eqPrecision=1e-4);
 
 
-
 CtrlSet operator+(const CtrlSet& A, const CtrlSet& B);
 
-<<<<<<< HEAD
-=======
-struct SymbolicCommand{
-
-    enum Command {CLOSE_GRIPPER, OPEN_GRIPPER};
-
-};
->>>>>>> added symbolic commands, solver C not up-to-date

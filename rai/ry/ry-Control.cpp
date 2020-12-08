@@ -38,6 +38,7 @@ void init_CtrlSet(pybind11::module& m) {
   .def("getObjectives", [](std::shared_ptr<CtrlSet>& self){
       pybind11::list list;
       for(const auto obj: self->getObjectives()) list.append(obj);
+<<<<<<< HEAD
       //for(const auto obj: self->symbolicCommands) list.append(obj);
       return list;
   })
@@ -45,6 +46,8 @@ void init_CtrlSet(pybind11::module& m) {
   .def("getSymbolicCommands", [](std::shared_ptr<CtrlSet>& self){
       pybind11::list list;
       for(const auto obj: self->symbolicCommands) list.append(obj);
+=======
+>>>>>>> robust symbolic command class integrated
       return list;
   })
 
