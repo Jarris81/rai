@@ -50,3 +50,11 @@ bool isFeasible(const CtrlSet& CS, const rai::Configuration& pathConfig, bool in
 
 CtrlSet operator+(const CtrlSet& A, const CtrlSet& B);
 
+<<<<<<< HEAD
+=======
+struct SymbolicCommand{
+
+    enum Command {CLOSE_GRIPPER, OPEN_GRIPPER};
+
+};
+>>>>>>> added symbolic commands, solver C not up-to-date

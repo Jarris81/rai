@@ -69,4 +69,3 @@ bool CtrlSymCommand::run(rai::Configuration& C) {
   // should not happen
   return false;
 }
-
