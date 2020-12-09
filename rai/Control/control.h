@@ -12,6 +12,8 @@
 #include "CtrlSet.h"
 #include "CtrlSolver.h"
 #include "CtrlTargets.h"
+#include "CtrlSolvers.h"
+#include "CtrlSymCommand.h"
 
 //===========================================================================
 

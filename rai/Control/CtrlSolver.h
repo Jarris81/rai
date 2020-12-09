@@ -35,6 +35,6 @@ struct CtrlSolver : NonCopyable {
 
   void update(const arr& q_real, const arr& qDot_real, rai::Configuration& C);
   void report(ostream& os=std::cout);
-  arr solve();
+  arr solve(rai::Configuration& C);
 
 };
