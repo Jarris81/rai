@@ -5,7 +5,7 @@
 #include "CtrlSymCommand.h"
 
 
-CtrlSymCommand::CtrlSymCommand(CommandType command, bool isCondition, rai::String gripper_name, rai::String object_name) {
+CtrlSymCommand::CtrlSymCommand(CtrlSymCommandType command, bool isCondition, rai::String gripper_name, rai::String object_name) {
   this->command = command;
   this->isCondition = isCondition;
 
@@ -15,24 +15,58 @@ CtrlSymCommand::CtrlSymCommand(CommandType command, bool isCondition, rai::Strin
 
 bool CtrlSymCommand::isConverged(const rai::Configuration& C) {
 
-  if(this->command == CLOSE_GRIPPER) {
-    rai::Frame *gripper = C.getFrame(this->frame1);
-    rai::Frame *object = C.getFrame(this->frame2);
-    //is object has as parent gripper, its grasping
+  switch (this->command) {
+    case CLOSE_GRIPPER:{
+      rai::Frame *gripper = C.getFrame(this->frame1);
+      rai::Frame *object = C.getFrame(this->frame2);
 
-    if(object->parent != gripper) return false;
+      //is object has as parent gripper, its grasping
+      if(object->parent != gripper) return false;
+      else return true;
+    }
+    case OPEN_GRIPPER:{
+      rai::Frame *gripper = C.getFrame(this->frame1);
+      rai::Frame *object = C.getFrame(this->frame2);
+
+      //is object has as parent gripper, its grasping
+      //check if gripper has a child childrren
+      for(auto child: gripper->children){
+        if(child == object){
+          return false;
+        }
+      }
+      return true;
+
+    }
+    default:{
+      //should not happen
+      cout<<"Undefined symbolic command, please add definition"<<endl;
+    }
+
+
   }
-
 }
 
 bool CtrlSymCommand::run(rai::Configuration& C) {
 
-  if(this->command == CLOSE_GRIPPER){
-    rai::Frame* gripper = C.getFrame(this->frame1);
-    rai::Frame* object = C.getFrame(this->frame2);
-    cout<<"Im grasping!!"<<endl;
-    C.attach(gripper, object);
+  switch (this->command) {
+
+    case CLOSE_GRIPPER:{
+      rai::Frame* gripper = C.getFrame(this->frame1);
+      rai::Frame* object = C.getFrame(this->frame2);
+      C.attach(gripper, object);
+      return true;
+    }
+    case OPEN_GRIPPER:{
+      rai::Frame* object = C.getFrame(this->frame2);
+      C.attach("world", object->name);
+      return true;
+
+    }
+
+
   }
-  return true;
+  // should not happen
+  return false;
 }
 

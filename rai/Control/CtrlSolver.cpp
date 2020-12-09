@@ -112,7 +112,7 @@ void CtrlSolver::report(std::ostream& os) {
 
 static int animate=0;
 
-arr CtrlSolver::solve() {
+arr CtrlSolver::solve(rai::Configuration& C) {
 #if 0
   TaskControlMethods M(komo.getConfiguration_t(0).getHmetric());
   arr q = komo.getConfiguration_t(0).getJointState();
@@ -120,6 +120,7 @@ arr CtrlSolver::solve() {
   return q;
 #elif 1
   komo.clearObjectives();
+  //komo.setModel(C, true);
   for(auto& o: objectives) if(o->active){
     komo.addObjective({}, o->feat, {}, o->type);
   }
