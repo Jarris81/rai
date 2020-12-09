@@ -37,8 +37,6 @@ bool CtrlSymCommand::isConverged(const rai::Configuration& C) {
       cout<<"Undefined symbolic command, please add definition"<<endl;
       return false;
     }
-
-
   }
 }
 
@@ -63,7 +61,6 @@ bool CtrlSymCommand::run(rai::Configuration& C) {
       cout<<"Undefined symbolic command, please add definition"<<endl;
       return false;
     }
-
 
   }
   // should not happen

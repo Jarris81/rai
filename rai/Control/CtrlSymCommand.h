@@ -12,7 +12,6 @@
 
 enum CtrlSymCommandType {SC_CLOSE_GRIPPER, SC_OPEN_GRIPPER};
 
-
 struct CtrlSymCommand {
 
     bool isCondition;
@@ -20,6 +19,7 @@ struct CtrlSymCommand {
     StringA frames;
 
     CtrlSymCommand();//CtrlSymCommandType command, bool isImmediate, rai::String gripper_name, rai::String object_name);
+
 
     bool isConverged(const rai::Configuration& C);
 

@@ -89,6 +89,13 @@ void init_CtrlSet(pybind11::module& m) {
   ENUMVAL(SC, CLOSE_GRIPPER)
   .export_values();
 
+#define ENUMVAL(pre, x) .value(#x, pre##_##x)
+  //TODO
+  //pybind11::enum_<CtrlSymCommandType>(m, "SC")
+  //ENUMVAL(CtrlSymCommandType, open_gripper)
+  //ENUMVAL(CtrlSymCommandType, CLOSE_GRIPPER)
+  //.export_values();
+
 };
 
 void init_CtrlSolver(pybind11::module& m) {
