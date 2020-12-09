@@ -45,10 +45,22 @@ void CtrlSet::addSymbolicCommand(StringA command, bool isImmediate) {
 
   //rai::Frame *gripper = Ctuple.getFrame(command.elem(2));
   //rai::Frame *object = Ctuple.getFrame(command.elem(3));
-  shared_ptr<CtrlSymCommand> ptr = make_shared<CtrlSymCommand>(CommandType(CLOSE_GRIPPER),
-                                                               isImmediate,
-                                                               command.elem(1),
-                                                               command.elem(2));
+  shared_ptr<CtrlSymCommand> ptr;
+
+  if(command.elem(0) == "close_gripper") {
+    ptr = make_shared<CtrlSymCommand>(CtrlSymCommandType(CLOSE_GRIPPER),
+                                      isImmediate,
+                                      command.elem(1),
+                                      command.elem(2));
+  }else if(command.elem(0) == "open_gripper"){
+    ptr = make_shared<CtrlSymCommand>(CtrlSymCommandType(OPEN_GRIPPER),
+                                      isImmediate,
+                                      command.elem(1),
+                                      command.elem(2));
+  }
+  else{
+    cout<<"Undefined symbolic command, please add definition"<<endl;
+  }
 
   symbolicCommands.append(ptr);
 }

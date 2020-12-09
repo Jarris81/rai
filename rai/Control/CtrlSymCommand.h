@@ -11,17 +11,16 @@
 #include "CtrlSymCommand.h"
 #include <Kin/feature.h>
 
-enum CommandType {CLOSE_GRIPPER, OPEN_GRIPPER};
+enum CtrlSymCommandType {CLOSE_GRIPPER=0, OPEN_GRIPPER};
 
 struct CtrlSymCommand {
 
     bool isCondition;
-    CommandType command;
-
+    CtrlSymCommandType command;
     rai::String frame1;
     rai::String frame2;
 
-    CtrlSymCommand(CommandType command, bool isImmediate, rai::String gripper_name, rai::String object_name);
+    CtrlSymCommand(CtrlSymCommandType command, bool isImmediate, rai::String gripper_name, rai::String object_name);
 
     bool isConverged(const rai::Configuration& C);
 

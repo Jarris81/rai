@@ -11,6 +11,8 @@
 #include "types.h"
 #include "ry-Config.h"
 #include "../Control/control.h"
+#include <pybind11/functional.h>
+#include <pybind11/iostream.h>
 
 void init_CtrlSet(pybind11::module& m) {
   pybind11::class_<CtrlSet, std::shared_ptr<CtrlSet>>(m, "CtrlSet", "A set of control objectives, which define a control mode and can be passed to a CtrlSolver")
@@ -52,6 +54,13 @@ void init_CtrlSet(pybind11::module& m) {
     .def("feat", [](std::shared_ptr<CtrlObjective>& self){
       return self->feat;
   });
+
+#define ENUMVAL(pre, x) .value(#x, pre##_##x)
+  //TODO
+  //pybind11::enum_<CtrlSymCommandType>(m, "SC")
+  //ENUMVAL(CtrlSymCommandType, open_gripper)
+  //ENUMVAL(CtrlSymCommandType, CLOSE_GRIPPER)
+  //.export_values();
 
 };
 
