@@ -38,7 +38,6 @@ void init_CtrlSet(pybind11::module& m) {
   .def("getObjectives", [](std::shared_ptr<CtrlSet>& self){
       pybind11::list list;
       for(const auto obj: self->getObjectives()) list.append(obj);
-<<<<<<< HEAD
       //for(const auto obj: self->symbolicCommands) list.append(obj);
       return list;
   })
@@ -46,8 +45,6 @@ void init_CtrlSet(pybind11::module& m) {
   .def("getSymbolicCommands", [](std::shared_ptr<CtrlSet>& self){
       pybind11::list list;
       for(const auto obj: self->symbolicCommands) list.append(obj);
-=======
->>>>>>> robust symbolic command class integrated
       return list;
   })
 
@@ -89,14 +86,6 @@ void init_CtrlSet(pybind11::module& m) {
   ENUMVAL(SC, CLOSE_GRIPPER)
   .export_values();
 
-#define ENUMVAL(pre, x) .value(#x, pre##_##x)
-  //TODO
-  //pybind11::enum_<CtrlSymCommandType>(m, "SC")
-  //ENUMVAL(CtrlSymCommandType, open_gripper)
-  //ENUMVAL(CtrlSymCommandType, CLOSE_GRIPPER)
-  //.export_values();
-
-};
 
 void init_CtrlSolver(pybind11::module& m) {
   pybind11::class_<CtrlSolver, std::shared_ptr<CtrlSolver>>(m, "CtrlSolver", "A control solver")

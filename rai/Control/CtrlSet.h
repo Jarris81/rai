@@ -9,12 +9,9 @@
 #pragma once
 
 #include "CtrlObjective.h"
-<<<<<<< HEAD
 #include "../Kin/feature.h"
-=======
 #include "CtrlSymCommand.h"
 #include <Kin/feature.h>
->>>>>>> robust symbolic command class integrated
 
 
 //===========================================================================
@@ -29,7 +26,6 @@ struct CtrlSet {
   shared_ptr<CtrlObjective> addObjective(const ptr<Feature>& f, ObjectiveType type, double transientStep=-1.);
   shared_ptr<CtrlObjective> add_qControlObjective(uint order, double scale, const rai::Configuration& C);
 
-<<<<<<< HEAD
   void addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate);
 
   operator rai::Array<shared_ptr<CtrlObjective>>&(){ return objectives; }
