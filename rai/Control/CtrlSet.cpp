@@ -40,27 +40,16 @@ bool CtrlSet::isConverged(const rai::Configuration& pathConfig) const {
   return isFeasible(*this, pathConfig, false);
 }
 
-void CtrlSet::addSymbolicCommand(StringA command, bool isImmediate) {
+void CtrlSet::addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate) {
 
   //rai::Frame *gripper = Ctuple.getFrame(command.elem(2));
   //rai::Frame *object = Ctuple.getFrame(command.elem(3));
   shared_ptr<CtrlSymCommand> ptr;
 
-  if(command.elem(0) == "close_gripper") {
-    ptr = make_shared<CtrlSymCommand>(CtrlSymCommandType(CLOSE_GRIPPER),
-                                      isImmediate,
-                                      command.elem(1),
-                                      command.elem(2));
-  }else if(command.elem(0) == "open_gripper"){
-    ptr = make_shared<CtrlSymCommand>(CtrlSymCommandType(OPEN_GRIPPER),
-                                      isImmediate,
-                                      command.elem(1),
-                                      command.elem(2));
-  }
-  else{
-    cout<<"Undefined symbolic command, please add definition"<<endl;
-  }
-
+  ptr = make_shared<CtrlSymCommand>();
+  ptr->command = commandType;
+  ptr->isCondition=isImmediate;
+  ptr->frames=frames;
   symbolicCommands.append(ptr);
 }
 
@@ -93,6 +82,10 @@ bool isFeasible(const CtrlSet& CS, const rai::Configuration& Ctuple, bool initOn
 
 rai::Array<shared_ptr<CtrlObjective>> CtrlSet::getObjectives() {
   return objectives;
+}
+
+rai::Array<shared_ptr<CtrlSymCommand>> CtrlSet::getSymbolicCommands() {
+  return symbolicCommands;
 }
 
 CtrlSet operator+(const CtrlSet& A, const CtrlSet& B){
