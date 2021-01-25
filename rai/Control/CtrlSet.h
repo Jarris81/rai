@@ -29,11 +29,7 @@ struct CtrlSet {
   shared_ptr<CtrlObjective> addObjective(const ptr<Feature>& f, ObjectiveType type, double transientStep=-1.);
   shared_ptr<CtrlObjective> add_qControlObjective(uint order, double scale, const rai::Configuration& C);
 
-  void addSymbolicCommand(StringA command, bool isImmediate);
-
-
-
-
+  void addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate);
 
   operator rai::Array<shared_ptr<CtrlObjective>>&(){ return objectives; }
 
@@ -43,6 +39,7 @@ struct CtrlSet {
   bool canBeInitiated(const rai::Configuration& Ctuple) const;
   bool isConverged(const rai::Configuration& Ctuple) const;
   rai::Array<shared_ptr<CtrlObjective>> getObjectives();
+  rai::Array<shared_ptr<CtrlSymCommand>> getSymbolicCommands();
 };
 
 //===========================================================================
