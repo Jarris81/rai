@@ -31,13 +31,20 @@ void init_CtrlSet(pybind11::module& m) {
       return self->canBeInitiated(*C);
   })
 
-  .def("isConverged", [](std::shared_ptr<CtrlSet>& self, std::shared_ptr<CtrlSolver>& solver) {
-      return self->isConverged(solver->komo.pathConfig);
+  .def("isConverged", [](std::shared_ptr<CtrlSet>& self, std::shared_ptr<rai::Configuration>& C) {
+      return self->canBeInitiated(*C);
   })
 
   .def("getObjectives", [](std::shared_ptr<CtrlSet>& self){
       pybind11::list list;
       for(const auto obj: self->getObjectives()) list.append(obj);
+      //for(const auto obj: self->symbolicCommands) list.append(obj);
+      return list;
+  })
+
+  .def("getSymbolicCommands", [](std::shared_ptr<CtrlSet>& self){
+      pybind11::list list;
+      for(const auto obj: self->symbolicCommands) list.append(obj);
       return list;
   })
 
@@ -54,13 +61,27 @@ void init_CtrlSet(pybind11::module& m) {
     .def("feat", [](std::shared_ptr<CtrlObjective>& self){
       return self->feat;
   });
+  pybind11::class_<CtrlSymCommand, shared_ptr<CtrlSymCommand>>(m, "SymbolicCommand")
+    .def(pybind11::init<>())
+    .def("getCommand", [](std::shared_ptr<CtrlSymCommand>& self){
+      return self->command;
+  })
+    .def("isCondition", [](std::shared_ptr<CtrlSymCommand>& self){
+      return self->isCondition;
+  })
+    .def("getFrameNames", [](std::shared_ptr<CtrlSymCommand>& self){
+      return I_conv(self->frames);
+  });
+  //  .def("feat", [](std::shared_ptr<CtrlSymCommand>& self){
+   //   return self->feat;
+  //});
 
 #define ENUMVAL(pre, x) .value(#x, pre##_##x)
   //TODO
-  //pybind11::enum_<CtrlSymCommandType>(m, "SC")
-  //ENUMVAL(CtrlSymCommandType, open_gripper)
-  //ENUMVAL(CtrlSymCommandType, CLOSE_GRIPPER)
-  //.export_values();
+  pybind11::enum_<CtrlSymCommandType>(m, "SC")
+  ENUMVAL(SC, OPEN_GRIPPER)
+  ENUMVAL(SC, CLOSE_GRIPPER)
+  .export_values();
 
 };
 

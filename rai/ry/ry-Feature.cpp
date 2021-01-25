@@ -51,8 +51,21 @@ void init_Feature(pybind11::module& m) {
     std::string s = self->shortTag(*C).p;
     return s;
   })
-  .def("get_FS", [](shared_ptr<Feature>& self) {
+  .def("getFS", [](shared_ptr<Feature>& self) {
     return self->fs;
+  })
+  .def("getTarget", [](shared_ptr<Feature>& self) {
+    return self->target;
+  })
+  .def("getScale", [](shared_ptr<Feature>& self) {
+    return self->scale;
+  })
+  .def("getFrameNames", [](shared_ptr<Feature>& self, shared_ptr<rai::Configuration>& C) {
+    pybind11::list list;
+    for(uint i:self->frameIDs){
+      list.append(C->frames.elem(i)->name().p);
+    }
+    return list;
   })
   ;
 }

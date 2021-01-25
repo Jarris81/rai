@@ -189,6 +189,11 @@ void init_Config(pybind11::module& m) {
   },
   "get the list of frame names"
       )
+  .def("getFramesByID", [](shared_ptr<rai::Configuration>& self, const uintA& ids) {
+    return 0;//self->getFrames(ids);
+  },
+  "get the list of frame names from their ID"
+      )
 
   .def("getFrameDimension", [](shared_ptr<rai::Configuration>& self) {
     return self->frames.N;
