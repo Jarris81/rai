@@ -48,6 +48,10 @@ void CtrlObjective::setRef(const ptr<CtrlMovingTarget>& _ref) {
   movingTarget = _ref;
 }
 
+void CtrlObjective::setOriginalTarget(const arr& original_target){
+  originalTarget = original_target;
+}
+
 void CtrlObjective::setTarget(const arr& y_target) {
   CHECK(movingTarget, "need a ref to set target");
   feat->setTarget(y_target);

@@ -15,6 +15,7 @@ ptr<CtrlObjective> CtrlSet::addObjective(const ptr<Feature>& f, ObjectiveType ty
   t->feat = f;
   t->type = type;
   t->transientStep = transientStep;
+  t->setOriginalTarget(f->target);
   if(t->transientStep>0.) {
     t->setRef(make_shared<CtrlTarget_MaxCarrot>(*t, t->transientStep));
   }
