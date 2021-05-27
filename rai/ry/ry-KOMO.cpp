@@ -175,9 +175,9 @@ void init_KOMO(pybind11::module& m) {
     return graph2list(G);
   })
 
-  .def("getReport", [](std::shared_ptr<KOMO>& self) {
+  .def("getReport", [](std::shared_ptr<KOMO>& self, bool gnuplt) {
 //    rai::Graph G = self->getProblemGraph(true);
-    rai::Graph R = self->getReport(true);
+    rai::Graph R = self->getReport(gnuplt);
     return graph2dict(R);
   })
 
