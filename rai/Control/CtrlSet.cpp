@@ -15,6 +15,7 @@ ptr<CtrlObjective> CtrlSet::addObjective(const ptr<Feature>& f, ObjectiveType ty
   t->feat = f;
   t->type = type;
   t->transientStep = transientStep;
+  t->setOriginalTarget(f->target);
   if(t->transientStep>0.) {
     t->setRef(make_shared<CtrlTarget_MaxCarrot>(*t, t->transientStep));
   }
@@ -38,6 +39,19 @@ bool CtrlSet::canBeInitiated(const rai::Configuration& pathConfig) const {
 
 bool CtrlSet::isConverged(const rai::Configuration& pathConfig) const {
   return isFeasible(*this, pathConfig, false);
+}
+
+void CtrlSet::addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate) {
+
+  //rai::Frame *gripper = Ctuple.getFrame(command.elem(2));
+  //rai::Frame *object = Ctuple.getFrame(command.elem(3));
+  shared_ptr<CtrlSymCommand> ptr;
+
+  ptr = make_shared<CtrlSymCommand>();
+  ptr->command = commandType;
+  ptr->isCondition=isImmediate;
+  ptr->frames=frames;
+  symbolicCommands.append(ptr);
 }
 
 void CtrlSet::addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate) {

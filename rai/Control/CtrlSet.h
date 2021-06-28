@@ -9,12 +9,9 @@
 #pragma once
 
 #include "CtrlObjective.h"
-<<<<<<< HEAD
 #include "../Kin/feature.h"
-=======
 #include "CtrlSymCommand.h"
 #include <Kin/feature.h>
->>>>>>> robust symbolic command class integrated
 
 
 //===========================================================================
@@ -44,6 +41,8 @@ struct CtrlSet {
 //===========================================================================
 
 bool isFeasible(const CtrlSet& CS, const rai::Configuration& pathConfig, bool initOnly=true, double eqPrecision=1e-4);
+
+
 
 
 

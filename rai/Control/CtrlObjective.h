@@ -26,7 +26,7 @@ struct CtrlObjective {
   ObjectiveType type;               ///< element of {sumOfSqr, inequality, equality}
   double transientStep; //TODO -> arr times;
   rai::String name;                 ///< just for easier reporting
-
+  arr originalTarget;
   //-- the reference (zero point in feature space (target in KOMO)) can be continuously changed by motion primitives or other means
   std::shared_ptr<CtrlMovingTarget> movingTarget;  ///< non-nullptr iff this is a pos/vel task
 
@@ -53,6 +53,7 @@ struct CtrlObjective {
 
   void setRef(const std::shared_ptr<CtrlMovingTarget>& _ref);
   void setTarget(const arr& y_target);
+  void setOriginalTarget(const arr& original_target);
   void setTimeScale(double d);
 
   void reportState(ostream& os) const;
