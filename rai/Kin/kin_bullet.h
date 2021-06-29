@@ -13,7 +13,7 @@ class btRigidBody;
 struct BulletInterface {
   struct BulletInterface_self* self=0;
 
-  BulletInterface(rai::Configuration& C, int verbose=1);
+  BulletInterface(rai::Configuration& C, int verbose=1, bool yAxisGravity=false);
   ~BulletInterface();
 
   void step(double tau=.01);
@@ -25,4 +25,15 @@ struct BulletInterface {
   void changeObjectType(rai::Frame* f, int _type);
 
   void saveBulletFile(const char* filename);
+};
+
+
+struct BulletBridge{
+  class btDiscreteDynamicsWorld* dynamicsWorld;
+  rai::Array<class btRigidBody*> actors;
+
+  BulletBridge(class btDiscreteDynamicsWorld* _dynamicsWorld);
+
+  void getConfiguration(rai::Configuration& C);
+  void pullPoses(rai::Configuration& C, bool alsoStaticAndKinematic);
 };

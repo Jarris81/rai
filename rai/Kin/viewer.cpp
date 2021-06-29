@@ -46,8 +46,12 @@ int rai::ConfigurationViewer::update(bool watch) {
     gl->text = drawText();
   }
 
-  gl->update(nullptr, false);
-  return gl->pressedkey;
+  return gl->update(nullptr, false);
+}
+
+void rai::ConfigurationViewer::raiseWindow(){
+  ensure_gl();
+  gl->raiseWindow();
 }
 
 int rai::ConfigurationViewer::setConfiguration(const rai::Configuration& _C, const char* text, bool watch) {
@@ -142,7 +146,9 @@ bool rai::ConfigurationViewer::playVideo(uint T, uint nFrames, bool watch, doubl
 
   CHECK_GE(C.frames.N, T*nFrames, "");
 
-  FrameL F = C.frames({0,T*nFrames-1});
+  FrameL F;
+  if(C.frames.nd==1) F = C.frames({0,T*nFrames-1});
+  else F = C.frames;
   F.reshape(T, nFrames);
 
   for(uint t=0; t<F.d0; t++) {

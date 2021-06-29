@@ -82,7 +82,13 @@ const char* rai::String::readStopSymbols = "\n\r";
 int   rai::String::readEatStopSymbol     = 1;
 rai::String rai::errString;
 Mutex coutMutex;
-rai::LogObject _log("global", 2, 3);
+rai::LogObject rai::_log("global", 2, 3);
+
+//===========================================================================
+
+template<> const char* rai::Enum<rai::ArgWord>::names []= {
+  "left", "right", "sequence", "path", "xAxis", "yAxis", "zAxis", "xNegAxis", "yNegAxis", "zNegAxis", 0
+};
 
 //===========================================================================
 //
@@ -96,7 +102,7 @@ bool IOraw=false;
 bool noLog=true;
 uint lineCount=1;
 int verboseLevel=-1;
-std::string initDir;
+std::string startDir;
 
 std::chrono::system_clock::time_point startTime;
 double timerStartTime=0.;
@@ -119,7 +125,7 @@ void system(const char* cmd) {
 void open(std::ofstream& fs, const char* name, const char* errmsg) {
   fs.clear();
   fs.open(name);
-  LOG(3) <<"opening output file '" <<name <<"'" <<std::endl;
+  LOG(3) <<"opening output file '" <<name <<"'";
   if(!fs.good()) RAI_MSG("could not open file '" <<name <<"' for output" <<errmsg);
 }
 
@@ -127,7 +133,7 @@ void open(std::ofstream& fs, const char* name, const char* errmsg) {
 void open(std::ifstream& fs, const char* name, const char* errmsg) {
   fs.clear();
   fs.open(name);
-  LOG(3) <<"opening input file '" <<name <<"'" <<std::endl;
+  LOG(3) <<"opening input file '" <<name <<"'";
   if(!fs.good()) HALT("could not open file '" <<name <<"' for input" <<errmsg);
 }
 
@@ -258,23 +264,23 @@ double linsig(double x) { if(x<0.) return 0.; if(x>1.) return 1.; return x; }
 /// x ends up in the interval [a, b]
 //void clip(double& x, double a, double b) { if(x<a) x=a; if(x>b) x=b; }
 
-/// the angle of the vector (x, y) in [-pi, pi]
-double phi(double x, double y) {
-  if(x==0. || ::fabs(x)<1e-10) { if(y>0.) return RAI_PI/2.; else return -RAI_PI/2.; }
-  double p=::atan(y/x);
-  if(x<0.) { if(y<0.) p-=RAI_PI; else p+=RAI_PI; }
-  if(p>RAI_PI)  p-=2.*RAI_PI;
-  if(p<-RAI_PI) p+=2.*RAI_PI;
-  return p;
-}
+///// the angle of the vector (x, y) in [-pi, pi]
+//double phi(double x, double y) {
+//  if(x==0. || ::fabs(x)<1e-10) { if(y>0.) return RAI_PI/2.; else return -RAI_PI/2.; }
+//  double p=::atan(y/x);
+//  if(x<0.) { if(y<0.) p-=RAI_PI; else p+=RAI_PI; }
+//  if(p>RAI_PI)  p-=2.*RAI_PI;
+//  if(p<-RAI_PI) p+=2.*RAI_PI;
+//  return p;
+//}
 
-/// the change of angle of the vector (x, y) when displaced by (dx, dy)
-double dphi(double x, double y, double dx, double dy) {
-  //return (dy*x - dx*y)/sqrt(x*x+y*y);
-  if(x==0. || ::fabs(x)<1e-10) { if(y>0.) return -dx/y; else return dx/y; }
-  double f=y/x;
-  return 1./(1.+f*f)*(dy/x - f/x*dx);
-}
+///// the change of angle of the vector (x, y) when displaced by (dx, dy)
+//double dphi(double x, double y, double dx, double dy) {
+//  //return (dy*x - dx*y)/sqrt(x*x+y*y);
+//  if(x==0. || ::fabs(x)<1e-10) { if(y>0.) return -dx/y; else return dx/y; }
+//  double f=y/x;
+//  return 1./(1.+f*f)*(dy/x - f/x*dx);
+//}
 
 /** @brief save division, checks for division by zero; force=true will return
   zero if y=0 */
@@ -582,13 +588,24 @@ void timerResume() {
   timerPauseTime=-1.;
 }
 
+//COPY & PAST from graph.h
+Mutex::TypedToken<rai::Graph> getParameters();
+void initParameters(int _argc, char* _argv[], bool forceReload);
+
 /// memorize the command line arguments and open a log file
 void initCmdLine(int _argc, char* _argv[]) {
   argc=_argc; argv=_argv;
-  rai::String msg;
-  msg <<"** cmd line arguments: '"; for(int i=0; i<argc; i++) msg <<argv[i] <<' ';
-  msg <<"\b'";
-  LOG(1) <<msg;
+  {
+    rai::String msg;
+    msg <<"** cmd line arguments: '"; for(int i=0; i<argc; i++) msg <<argv[i] <<' ';
+    msg <<"\b'";
+    LOG(1) <<msg;
+  }
+
+  startDir = getcwd_string();
+  LOG(1) <<"** run path: '" <<startDir <<"'";
+
+  initParameters(argc, argv, false);
 }
 
 /// returns true if the tag was found on command line
@@ -644,22 +661,23 @@ void handleSIGUSR2(int) {
   i*=i;    //set a break point here, if you want to catch errors directly
 }
 
-struct LogServer {
-  LogServer() {
-    signal(SIGABRT, rai::handleSIGUSR2);
-    timerStartTime = rai::cpuTime();
+struct ProcessInfo {
+  ProcessInfo() {
+    signal(SIGABRT, handleSIGUSR2);
+    timerStartTime = cpuTime();
     startTime = std::chrono::system_clock::now();
   }
 
-  ~LogServer() {
+  ~ProcessInfo() {
   }
 };
 
-Singleton<rai::LogServer> logServer;
+Singleton<rai::ProcessInfo> processInfo;
 }
 
 rai::LogObject::LogObject(const char* key, int defaultLogCoutLevel, int defaultLogFileLevel)
   : key(key), logCoutLevel(defaultLogCoutLevel), logFileLevel(defaultLogFileLevel) {
+  processInfo.getSingleton(); //just to ensure it was created
   if(!strcmp(key, "global")) {
     fil.open("z.log.global");
     fil <<"** compiled at:     " <<__DATE__ <<" " <<__TIME__ <<'\n';
@@ -684,14 +702,17 @@ rai::LogToken rai::LogObject::getToken(int log_level, const char* code_file, con
 }
 
 rai::LogToken::~LogToken() {
-  auto mut = rai::logServer(); //keep the mutex
+  auto mut = rai::processInfo(); //keep the mutex
   if(log.logFileLevel>=log_level) {
     if(!log.fil.is_open()) log.fil.open(STRING("z.log."<<log.key));
     log.fil <<code_file <<':' <<code_func <<':' <<code_line <<'(' <<log_level <<") " <<msg <<endl;
   }
   if(log.logCoutLevel>=log_level) {
-    if(log_level>=0) std::cout <<code_file <<':' <<code_func <<':' <<code_line <<'(' <<log_level <<") " <<msg <<endl;
-    if(log_level<0) {
+    rai::errString.clear() <<code_file <<':' <<code_func <<':' <<code_line <<'(' <<log_level <<") " <<msg;
+    if(log.callback) log.callback(rai::errString.p, log_level);
+    if(log_level>=0){
+      cout <<"** INFO:" <<rai::errString <<endl; return;
+    } else {
 
 #ifndef RAI_MSVC
       if(log_level<=-2) {
@@ -723,10 +744,6 @@ rai::LogToken::~LogToken() {
       }
 #endif
 
-      rai::errString.clear() <<code_file <<':' <<code_func <<':' <<code_line <<'(' <<log_level <<") " <<msg;
-// #ifdef RAI_ROS
-//       ROS_INFO("RAI-MSG: %s",rai::errString.p);
-// #endif
       if(log_level==-1) { cout <<"** WARNING:" <<rai::errString <<endl; return; }
       else if(log_level==-2) { cerr <<"** ERROR:" <<rai::errString <<endl; /*throw does not WORK!!! Because this is a destructor. The THROW macro does it inline*/ }
       else if(log_level==-3) { cerr <<"** HARD EXIT! " <<rai::errString <<endl;  exit(1); }
@@ -738,17 +755,13 @@ rai::LogToken::~LogToken() {
 }
 
 void setLogLevels(int fileLogLevel, int consoleLogLevel) {
-  _log.logCoutLevel=consoleLogLevel;
-  _log.logFileLevel=fileLogLevel;
+  rai::_log.logCoutLevel=consoleLogLevel;
+  rai::_log.logFileLevel=fileLogLevel;
 }
 
 //===========================================================================
 //
 // parameters
-
-namespace rai {
-
-}
 
 /// a global operator to scan (parse) strings from a stream
 std::istream& operator>>(std::istream& is, const PARSE& x) {
@@ -1029,7 +1042,7 @@ void rai::FileToken::decomposeFilename() {
 }
 
 void rai::FileToken::cd_start() {
-  LOG(3) <<"entering path '" <<cwd<<"'" <<std::endl;
+  LOG(3) <<"entering path '" <<cwd<<"'";
   if(chdir(cwd)) HALT("couldn't change to directory '" <<cwd <<"'");
 }
 
@@ -1037,7 +1050,7 @@ void rai::FileToken::cd_file() {
   cd_start();
   if(!path.N) decomposeFilename();
   if(path!=".") {
-    LOG(3) <<"entering path '" <<path<<"' from '" <<cwd <<"'" <<std::endl;
+    LOG(3) <<"entering path '" <<path<<"' from '" <<cwd <<"'";
     if(chdir(path)) HALT("couldn't change to directory '" <<path <<"' from '" <<cwd <<"'");
   }
 }
@@ -1054,7 +1067,7 @@ std::ofstream& rai::FileToken::getOs(bool change_dir) {
     if(change_dir) cd_file();
     os = std::make_unique<std::ofstream>();
     os->open(name);
-    LOG(3) <<"opening output file '" <<name <<"'" <<std::endl;
+    LOG(3) <<"opening output file '" <<name <<"'";
     if(!os->good()) RAI_MSG("could not open file '" <<name <<"' for output from '" <<cwd <<"./" <<path <<"'");
   }
   return *os;
@@ -1066,7 +1079,7 @@ std::ifstream& rai::FileToken::getIs(bool change_dir) {
     if(change_dir) cd_file();
     is = std::make_unique<std::ifstream>();
     is->open(name);
-    LOG(3) <<"opening input file '" <<name <<"'" <<std::endl;
+    LOG(3) <<"opening input file '" <<name <<"'";
     if(!is->good()) THROW("could not open file '" <<name <<"' for input from '" <<cwd <<"./" <<path <<"'");
   }
   return *is;
@@ -1426,9 +1439,16 @@ template bool rai::getParameter<bool>(const char*, const bool&);
 template long rai::getParameter<long>(const char*);
 template rai::String rai::getParameter<rai::String>(const char*);
 template rai::String rai::getParameter<rai::String>(const char*, const rai::String&);
+template StringA rai::getParameter<StringA>(const char*, const StringA&);
 
 template bool rai::checkParameter<uint>(const char*);
 template bool rai::checkParameter<int>(const char*);
 template bool rai::checkParameter<bool>(const char*);
 template bool rai::checkParameter<rai::String>(const char*);
 
+
+//===========================================================================
+
+RUN_ON_INIT_BEGIN(util)
+//rai::processInfo(); //creates the singleton
+RUN_ON_INIT_END(util)

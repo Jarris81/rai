@@ -9,6 +9,8 @@
 #include "pathTools.h"
 #include "komo.h"
 
+#include "../Kin/F_collisions.h"
+
 arr getVelocities_centralDifference(const arr& q, double tau) {
   arr v;
   v.resizeAs(q);
@@ -107,9 +109,9 @@ rai::String validatePath(const rai::Configuration& _C, const arr& q_now, const S
 //  }
 //}
 
-std::pair<arr, arr> getStartGoalPath(const rai::Configuration& K, const arr& target_q, const StringA& target_joints, const char* endeff, double up, double down) {
+std::pair<arr, arr> getStartGoalPath(const rai::Configuration& C, const arr& target_q, const StringA& target_joints, const char* endeff, double up, double down) {
   KOMO komo;
-  komo.setModel(K, true);
+  komo.setModel(C, true);
   komo.setTiming(1., 20, 3.);
   komo.add_qControlObjective({}, 2, 1.);
 
@@ -130,12 +132,12 @@ std::pair<arr, arr> getStartGoalPath(const rai::Configuration& K, const arr& tar
   komo.verbose=1;
   komo.optimize();
 
-  arr path = komo.getPath(K.getJointIDs());
+  arr path = komo.getPath_qOrg();
   path[path.d0-1] = target_q; //overwrite last config
   arr times = komo.getPath_times();
-  cout <<validatePath(K, K.getJointState(), target_joints, path, times) <<endl;
-  bool go = komo.displayPath("", true, true);//;/komo.display();
-  if(!go) {
+  cout <<validatePath(C, C.getJointState(), target_joints, path, times) <<endl;
+  int key = komo.view(true);
+  if(key=='q') {
     cout <<"ABORT!" <<endl;
     return {arr(), arr()};
   }
@@ -174,9 +176,68 @@ arr path_resample(const arr& q, double durationScale) {
 }
 
 rai::Spline getSpline(const arr& q, double duration, uint degree) {
-  rai::Spline S = rai::Spline(0, q, degree);
-  if(duration!=1.) {
-    S.times *= duration;
-  }
+  rai::Spline S;
+  S.set(degree, q, grid(1,0.,duration, q.N-1));
   return S;
+}
+
+void boundClip(arr& y, const arr& bound_lo, const arr& bound_up);
+bool checkBound(arr& y, const arr& bound_lo, const arr& bound_up, double eps=1e-3);
+
+bool checkCollisionsAndLimits(rai::Configuration& C, FrameL collisionPairs, const arr& limits, bool solveForFeasible, int verbose){
+  //-- check for limits
+  if(limits.N){
+    arr q = C.getJointState();
+    arr B = ~limits;
+    bool good = checkBound(q, B[0], B[1]);
+    if(!good){
+      if(solveForFeasible){
+        boundClip(q, B[0], B[1]);
+        C.setJointState(q);
+      }else{
+        LOG(-2) <<"BOUNDS FAILED";
+        return false;
+      }
+    }
+  }
+
+  //-- check for collisions!
+  if(collisionPairs.N){
+    CHECK_EQ(&collisionPairs.last()->C, &C, "");
+    auto coll = F_PairCollision().eval(collisionPairs);
+    bool doesCollide=false;
+    for(uint i=0;i<coll.y.N;i++){
+      if(coll.y.elem(i)>0.){
+        LOG(-1) <<"in collision: " <<collisionPairs(i,0)->name <<'-' <<collisionPairs(i,1)->name <<' ' <<coll.y.elem(i);
+        doesCollide=true;
+      }
+    }
+    if(doesCollide){
+      if(solveForFeasible){
+        KOMO komo;
+        komo.setModel(C);
+        komo.setTiming(1., 1, 1., 1);
+        komo.add_qControlObjective({}, 1, 1e-1);
+        komo.addSquaredQuaternionNorms();
+
+        komo.addObjective({}, FS_distance, framesToNames(collisionPairs), OT_ineq, {1e2}, {-.001});
+
+        komo.verbose=0;
+        komo.optimize(0., OptOptions().set_verbose(0).set_stopTolerance(1e-3));
+
+        if(komo.ineq>1e-1){
+          LOG(-1) <<"solveForFeasible failed!" <<komo.getReport();
+          if(verbose>1) komo.view(verbose>2, "FAILED!");
+          return false;
+        }else{
+          LOG(0) <<"collisions resolved";
+          C.setJointState(komo.x);
+        }
+      }else{
+        LOG(-2) <<"COLLIDES!";
+        return false;
+      }
+    }
+  }
+  return true;
 }

@@ -8,15 +8,7 @@
 
 #ifdef RAI_PYBIND
 
-#include "ry-Config.h"
-#include "ry-Feature.h"
-#include "ry-Frame.h"
-#include "ry-KOMO.h"
-#include "ry-LGP_Tree.h"
-#include "ry-Bullet.h"
-#include "ry-PhysX.h"
-#include "ry-Operate.h"
-#include "ry-Simulation.h"
+#include "ry.h"
 
 #include "types.h"
 
@@ -105,9 +97,12 @@ void init_Config(pybind11::module& m) {
   pybind11::arg("quat") = std::vector<double>()
       )
 
-  .def("addConfigurationCopy", [](shared_ptr<rai::Configuration>& self, shared_ptr<rai::Configuration>& other){
-    self->addConfiguration(*other);
-  }, "")
+  .def("addConfigurationCopy", [](shared_ptr<rai::Configuration>& self, shared_ptr<rai::Configuration>& other, double tau){
+    self->addConfiguration(*other, tau);
+  }, "",
+    pybind11::arg("config"),
+    pybind11::arg("tau")=1.
+  )
 
   .def("getFrame", [](shared_ptr<rai::Configuration>& self, const std::string& frameName) {
     rai::Frame *f = self->getFrame(frameName.c_str(), true);
@@ -278,7 +273,7 @@ part of the joint state and define the number of DOFs",
       )
 
   .def("selectJointsByTag", [](shared_ptr<rai::Configuration>& self, const ry::I_StringA& jointGroups) {
-    self->selectJointsByGroup(I_conv(jointGroups));
+    self->selectJointsByAtt(I_conv(jointGroups));
     self->ensure_q();
   },
   "redefine what are considered the DOFs of this configuration: only joint that have a tag listed in jointGroups are considered \
@@ -397,7 +392,8 @@ from broadphase collision computation)",
     CHECK_GE(numConfigs, 1, "");
     auto komo = make_shared<KOMO>();
     komo->setModel(*self, useSwift);
-    komo->setDiscreteOpt(numConfigs);
+    komo->setTiming(numConfigs, 1, 1., 1);
+    komo->addSquaredQuaternionNorms();
     return komo;
   },
   "create KOMO solver configured for dense graph optimization, \
@@ -510,7 +506,7 @@ allows you to control robot motors by position, velocity, or accelerations, \
 
 //===========================================================================
 
-//  pybind11::class_<ry::ConfigViewer>(m, "ConfigViewer");
+  pybind11::class_<rai::ConfigurationViewer, shared_ptr<rai::ConfigurationViewer>>(m, "ConfigurationViewer");
   pybind11::class_<ImageViewerCallback, shared_ptr<ImageViewerCallback>>(m, "ImageViewer");
   pybind11::class_<PointCloudViewerCallback, shared_ptr<PointCloudViewerCallback>>(m, "PointCloudViewer");
 

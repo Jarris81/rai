@@ -36,10 +36,11 @@ void TEST(GJK_Jacobians) {
   F_PairCollision distVec(F_PairCollision::_vector);
   F_PairCollision distNorm(F_PairCollision::_normal);
   F_PairCollision distCenter(F_PairCollision::_center);
-  dist.setFrameIDs({B1.ID, B2.ID});
-  distVec.setFrameIDs({B1.ID, B2.ID});
-  distNorm.setFrameIDs({B1.ID, B2.ID});
-  distCenter.setFrameIDs({B1.ID, B2.ID});
+  FrameL F = {&B1, &B2};
+//  dist.setFrameIDs({B1.ID, B2.ID});
+//  distVec.setFrameIDs({B1.ID, B2.ID});
+//  distNorm.setFrameIDs({B1.ID, B2.ID});
+//  distCenter.setFrameIDs({B1.ID, B2.ID});
 
   for(uint k=0;k<100;k++){
 //    //randomize shapes
@@ -75,21 +76,21 @@ void TEST(GJK_Jacobians) {
     succ=true;
 
     arr y,y2,y3;
-    dist.__phi(y, NoArr, C);
+    dist.eval(y, NoArr, F);
     cout <<k <<" dist ";
-    succ &= checkJacobian(dist.vf(C), q, 1e-5);
+    succ &= checkJacobian(dist.vf2(F), q, 1e-5);
 
-    distVec.__phi(y2, NoArr, C);
+    distVec.eval(y2, NoArr, F);
     cout <<k <<" vec  ";
-    succ &= checkJacobian(distVec.vf(C), q, 1e-5);
+    succ &= checkJacobian(distVec.vf2(F), q, 1e-5);
 
-    distNorm.__phi(y3, NoArr, C);
+    distNorm.eval(y3, NoArr, F);
     cout <<k <<" norm  ";
-    succ &= checkJacobian(distNorm.vf(C), q, 1e-5);
+    succ &= checkJacobian(distNorm.vf2(F), q, 1e-5);
 
-    distCenter.__phi(y3, NoArr, C);
+    distCenter.eval(y3, NoArr, F);
     cout <<k <<" center  ";
-    succ &= checkJacobian(distCenter.vf(C), q, 1e-5);
+    succ &= checkJacobian(distCenter.vf2(F), q, 1e-5);
 
     PairCollision collInfo(s1.sscCore(), s2.sscCore(), s1.frame.ensure_X(), s2.frame.ensure_X(), s1.size(-1), s2.size(-1));
 
@@ -131,10 +132,10 @@ void TEST(GJK_Jacobians2) {
 
   rai::ConfigurationViewer V;
   V.setConfiguration(C, 0, true);
+  V.ensure_gl().drawOptions.drawProxies=true;
 
   C.stepSwift();
 //  C.reportProxies();
-  C.orsDrawProxies=true;
 
   VectorFunction f = [&C](arr& y, arr& J, const arr& x) -> void {
     C.setJointState(x);
@@ -161,7 +162,7 @@ void TEST(GJK_Jacobians2) {
     C.kinematicsPenetration(y, J, .05);
 
     arr y2, J2;
-    qn.__phi(y2, J2, C);
+    qn.eval(y2, J2, qn.getFrames(C));
 
     cout <<"contact meassure = " <<y(0) <<" diff=" <<y(0) - y_last <<" quat-non-normalization=" <<y2(0) <<endl;
     y_last = y(0);
@@ -204,10 +205,10 @@ void TEST(GJK_Jacobians3) {
 
   rai::ConfigurationViewer V;
   V.setConfiguration(C, 0, true);
+  V.ensure_gl().drawOptions.drawProxies=true;
 
   C.stepSwift();
   C.reportProxies();
-  C.orsDrawProxies=true;
 
   arr q = C.getJointState();
 
@@ -220,15 +221,15 @@ void TEST(GJK_Jacobians3) {
 //    PairCollision collInfo(s1.sscCore(), s2.sscCore(), s1.frame.X, s2.frame.X, s1.size(-1), s2.size(-1));
 
     F_PairCollision gjk(F_PairCollision::_negScalar);
-    gjk.setFrameIDs({1, 2});
-    checkJacobian(gjk.vf(C), q, 1e-4);
+    FrameL F = {&B1, &B2};
+    checkJacobian(gjk.vf2(F), q, 1e-4);
 
     arr y,J;
-    gjk.__phi(y, J, C);
+    gjk.eval(y, J, F);
 
     F_qQuaternionNorms qn;
     arr y2, J2;
-    qn.__phi(y2, J2, C);
+    qn.eval(y2, J2, C.frames);
 
     cout <<"contact meassure = " <<y(0) <<endl;
     V.setConfiguration(C, STRING("t=" <<t <<"  movement along negative contact gradient"), false);
@@ -287,16 +288,103 @@ void TEST(Functional) {
 
 //===========================================================================
 
+void testSweepingSDFs(){
+  //-- create a single config with 2 objects
+  rai::Configuration C0;
+  auto base = C0.addFrame("base");
+  base->setPosition({0.,0.,1.});
+  for(uint i=0;i<2;i++){
+    rai::Frame *a = C0.addFrame(STRING("obj_" <<i), "base");
+    a->setJoint(rai::JT_free);
+    a->set_Q()->setRandom();
+    if(i==0)
+//      a->setShape(rai::ST_sphere, {.1});
+    a->setShape(rai::ST_capsule, {.5,.1});
+    else
+//      a->setShape(rai::ST_sphere, {.1});
+      a->setShape(rai::ST_capsule, {.5,.1});
+//      a->setShape(rai::ST_ssBox, {.3, .2, .1, .03});
+//      a->setShape(rai::ST_ssBox, {1.3, 1.2, 1.1, .1});
+    a->setColor({.8,.8,.8,.6});
+    a->setContact(1);
+  }
+
+  rai::Configuration C;
+  C.addConfiguration(C0);
+  C.addConfiguration(C0);
+  FrameL F ({2,2},{C.frames(0,1), C.frames(0,2), C.frames(1,1), C.frames(1,2)});
+
+  C.addFrame("") ->setParent(F(0,0)). setShape(rai::ST_marker, {.3}). setColor({1.,0.,0.});
+  C.addFrame("") ->setParent(F(0,1)). setShape(rai::ST_marker, {.3}). setColor({1.,0.,0.});
+  C.addFrame("") ->setParent(F(1,0)). setShape(rai::ST_marker, {.3}). setColor({1.,1.,0.});
+  C.addFrame("") ->setParent(F(1,1)). setShape(rai::ST_marker, {.3}). setColor({1.,1.,0.});
+
+  OpenGL gl;
+  gl.camera.setDefault();
+  gl.drawOptions.drawWires=true;
+  gl.add(glStandardScene);
+
+  rai::Mesh sweep1;
+  rai::Mesh sweep2;
+
+  arr x = C.getJointState();
+  for(uint t=0;t<20;t++){
+    rndGauss(x, .7);
+    C.setJointState(x);
+
+    F_PairFunctional dist;
+//    auto y = dist.eval({C.frames(0,1), C.frames(0,2)});
+//    checkJacobian(dist.vf2({C.frames(0,1), C.frames(0,2)}), x, 1e-4);
+    dist.setOrder(1);
+    auto y = dist.eval(F);
+    checkJacobian(dist.vf2(F), x, 1e-4);
+
+    arr V = F(0,0)->getMeshPoints();
+    F(0,0)->ensure_X().applyOnPointArray(V);
+    arr vel = (F(1,0)->ensure_X().pos - F(0,0)->ensure_X().pos).getArr();
+    sweep1.clear();
+    sweep1.C = {.7, .9, .7, .3};
+    sweep1.V.append(V);
+    sweep1.V.append(V+(ones(V.d0)^vel));
+    sweep1.makeConvexHull();
+
+    V = F(0,1)->getMeshPoints();
+    F(0,1)->ensure_X().applyOnPointArray(V);
+    vel = (F(1,1)->ensure_X().pos - F(0,1)->ensure_X().pos).getArr();
+    sweep2.clear();
+    sweep2.C = {.7, .7, .9, .3};
+    sweep2.V.append(V);
+    sweep2.V.append(V+(ones(V.d0)^vel));
+    sweep2.makeConvexHull();
+
+    gl.add(dist);
+    gl.add(C);
+    gl.add(sweep1);
+    gl.add(sweep2);
+    gl.update(STRING(t), true);
+    /*if(!succ)*/ gl.watch();
+
+    gl.remove(sweep2);
+    gl.remove(sweep1);
+    gl.remove(C);
+    gl.remove(dist);
+  }
+
+}
+
+//===========================================================================
+
 int MAIN(int argc, char** argv){
   rai::initCmdLine(argc, argv);
 
-  rnd.clockSeed();
+//  rnd.clockSeed();
 
 //  testGJK_Jacobians();
 //  testGJK_Jacobians2();
 //  testGJK_Jacobians3();
 
-  testFunctional();
+//  testFunctional();
+  testSweepingSDFs();
 
   return 0;
 }

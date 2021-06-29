@@ -23,6 +23,11 @@ struct F_fex_Force : Feature {
   uint dim_phi2(const FrameL& F) { return 3; }
 };
 
+struct F_fex_Torque : Feature {
+  void phi2(arr& y, arr& J, const FrameL& F);
+  uint dim_phi2(const FrameL& F) { return 3; }
+};
+
 struct F_fex_Wrench : Feature {
   void phi2(arr& y, arr& J, const FrameL& F);
   uint dim_phi2(const FrameL& F){ return 6; }
@@ -58,7 +63,8 @@ struct F_GravityAcceleration : Feature {
 };
 
 struct F_NewtonEuler : Feature {
-  F_NewtonEuler() { order = 2; }
+  bool useGravity=true;
+  F_NewtonEuler(bool _useGravity = true) : useGravity(_useGravity) { order = 2; }
   virtual void phi2(arr& y, arr& J, const FrameL& F);
   virtual uint dim_phi2(const FrameL& F) { return 6; }
 };

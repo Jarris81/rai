@@ -7,7 +7,7 @@
     --------------------------------------------------------------  */
 
 #include "simulation.h"
-#include "splineRunner.h"
+#include "../Control/splineRunner.h"
 #include "../Algo/spline.h"
 #include "../Kin/kin_swift.h"
 #include "../Kin/proxy.h"
@@ -31,7 +31,7 @@ struct Simulation_self {
   OpenGL gl;
 
   uintA currentlyUsedJoints; //the joints that the spline refers to
-  SplineRunner spline;
+  rai::SplineRunner spline;
   double dt; // time stepping interval
   uint stepCount=0; // number of simulation steps
 };
@@ -110,7 +110,7 @@ void Simulation::setJointStateSafe(arr q_ref, StringA& jointsInLimit, StringA& c
   collisionPairs.clear();
 
   //-- first check limits -> box constraints -> clip
-  for(rai::Joint* j:KK.activeJoints) {
+  for(rai::Dof* j:KK.activeJoints) {
     bool active=false;
     if(j->limits.N) {
       for(uint d=0; d<j->dim; d++) {
@@ -226,7 +226,7 @@ void Simulation::exec(const StringA& command) {
     b = b->getUpwardLink();
 
     if(b->parent) b->unLink();
-    b->linkFrom(a, true);
+    b->setParent(a, true);
     (new rai::Joint(*b)) -> type=rai::JT_rigid;
     K.ensure_q();
   }
@@ -261,7 +261,7 @@ arr Simulation::getObjectPoses(const StringA& objects) {
     for(const rai::String& s:objects) objs.append(K[s]);
   } else { //non specified... go through the list and pick 'percets'
     for(rai::Frame* a:K.frames) {
-      if(a->ats["percept"]) objs.append(a);
+      if((*a->ats)["percept"]) objs.append(a);
     }
   }
 
@@ -281,7 +281,7 @@ StringA Simulation::getObjectNames() {
 
   StringA objs;
   for(rai::Frame* a:K.frames) {
-    if(a->ats["percept"]) objs.append(a->name);
+    if((*a->ats)["percept"]) objs.append(a->name);
   }
   return objs;
 }

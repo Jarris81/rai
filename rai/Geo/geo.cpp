@@ -14,6 +14,8 @@
 #  include <GL/glu.h>
 #endif
 
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+
 const rai::Vector Vector_x(1, 0, 0);
 const rai::Vector Vector_y(0, 1, 0);
 const rai::Vector Vector_z(0, 0, 1);
@@ -1435,10 +1437,10 @@ void Transformation::applyOnPoint(arr& pt) const {
   if(!pos.isZero) pt += pos.getArr();
 }
 
-void Transformation::applyOnPointArray(arr& pts) const {
+arr& Transformation::applyOnPointArray(arr& pts) const {
   if(!((pts.nd==2 && pts.d1==3) || (pts.nd==3 && pts.d2==3))) {
     LOG(-1) <<"wrong pts dimensions for transformation:" <<pts.dim();
-    return;
+    return pts;
   }
   if(!rot.isZero) {
     arr R = ~rot.getArr(); //transposed, only to make it applicable to an n-times-3 array
@@ -1451,6 +1453,7 @@ void Transformation::applyOnPointArray(arr& pts) const {
       p[2] += pos.z;
     }
   }
+  return pts;
 }
 
 bool Transformation::isZero() const {
@@ -1514,7 +1517,7 @@ void Transformation::read(std::istream& is) {
         case '|':
         case '>': is.putback(c); return; //those symbols finish the reading without error
         default: {
-          RAI_MSG("unknown Transformation read tag: " <<c <<"abort reading this frame"); is.putback(c); return;
+          RAI_MSG("unknown Transformation read tag: '" <<c <<"' abort reading this frame"); is.putback(c); return;
         }
       }
     if(is.fail()) HALT("error reading '" <<c <<"' parameters in frame");

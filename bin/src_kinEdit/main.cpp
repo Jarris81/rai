@@ -7,6 +7,8 @@ const char *USAGE =
     "\n"
     "\n  -file <g-file>"
     "\n  -prune           to optimize the tree structure and prune useless frames"
+    "\n  -makeConvexHulls   make all meshes convex"
+    "\n  -collisions      compute collisions in the scene and report proxies"
     "\n  -writeMeshes     to write all meshes in a folder"
     "\n  -dot             to illustrate the tree structure as graph"
     "\n  -cleanOnly       to skip the animation/edit loop\n";
@@ -48,15 +50,9 @@ int main(int argc,char **argv){
   C.checkConsistency();
   C >>FILE("z.g");
 
-  //-- report collisions
-//  C.stepSwift();
-//  LOG(0) <<"total penetration: " <<C.totalCollisionPenetration();
-//  LOG(0) <<"collision report: ";
-//  C.reportProxies(cout, 0.);
-
   //-- some optional manipulations
   if(rai::checkParameter<bool>("prune")){
-    cout <<"PRUNING STRUCTURE" <<endl;
+    LOG(0) <<"PRUNING STRUCTURE";
     C.optimizeTree(true, true, false);
   }
 //    C.optimizeTree(false, false, false);
@@ -64,15 +60,29 @@ int main(int argc,char **argv){
   C.checkConsistency();
   C.sortFrames();
 
+  //-- make convex
+  if(rai::checkParameter<bool>("makeConvexHulls")){
+    LOG(0) <<"creating convex hulls";
+    makeConvexHulls(C.frames, false);
+  }
+
+  //-- report collisions
+  if(rai::checkParameter<bool>("collisions")){
+    C.ensure_proxies();
+    LOG(0) <<"total penetration: " <<C.getTotalPenetration();
+    LOG(0) <<"collision report: ";
+    C.reportProxies(cout, 0.);
+  }
+
+  //-- save meshes
   if(rai::checkParameter<bool>("writeMeshes")){
+    LOG(0) <<"writing meshes";
     rai::system("mkdir -p meshes");
     C.writeMeshes();
   }
 
-  //    makeConvexHulls(G.frames);
-  //    computeOptimalSSBoxes(G.shapes);
-
   //-- save file in different formats
+  LOG(0) <<"saving urdf and dae files";
   FILE("z.g") <<C;
   C.writeURDF(FILE("z.urdf"));
   C.writeCollada("z.dae");

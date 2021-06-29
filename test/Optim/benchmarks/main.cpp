@@ -14,7 +14,7 @@ void TEST(KOMO_IK) {
   S.setSolver(sid);
   S.setProblem(*nlp.get());
 
-  arr x = S.solve();
+  auto ret = S.solve();
   nlp.get()->report(cout, 10);
   S.gnuplot_costs();
 
@@ -24,7 +24,8 @@ void TEST(KOMO_IK) {
 //===========================================================================
 
 void TEST(Skeleton_Handover) {
-  OptBench_Skeleton_Handover nlp(rai::_sequence);
+  OptBench_Skeleton_Pick nlp(rai::_path);
+//  OptBench_Skeleton_Handover nlp(rai::_path);
 //  OptBench_Skeleton_StackAndBalance nlp(rai::_sequence);
 
   NLP_Solver S;
@@ -34,7 +35,7 @@ void TEST(Skeleton_Handover) {
   S.setProblem(*nlp.get());
 
 //  nlp.get()->report(cout, 0);
-  arr x = S.solve();
+  auto ret = S.solve();
   nlp.get()->report(cout, 10);
   S.gnuplot_costs();
 
@@ -49,8 +50,8 @@ int MAIN(int argc,char** argv){
 //  rnd.clockSeed();
   rnd.seed(0);
 
-  testKOMO_IK();
-//  testSkeleton_Handover();
+//  testKOMO_IK();
+  testSkeleton_Handover();
 
   return 0;
 }

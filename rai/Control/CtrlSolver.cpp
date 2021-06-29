@@ -11,11 +11,11 @@
 
 #include "CtrlTargets.h"
 
-CtrlSolver::CtrlSolver(rai::Configuration& _C, double _tau, uint k_order)
+CtrlSolver::CtrlSolver(const rai::Configuration& _C, double _tau, uint k_order)
   : tau(_tau) {
   komo.setModel(_C, true);
   komo.setTiming(1., 1, _tau, k_order);
-  komo.setupConfigurations2();
+  komo.setupPathConfig();
 }
 
 CtrlSolver::~CtrlSolver(){
@@ -23,6 +23,7 @@ CtrlSolver::~CtrlSolver(){
 
 void CtrlSolver::set(const CtrlSet& CS) {
   objectives = CS.objectives;
+  symbolicCommands = CS.symbolicCommands;
 }
 
 void CtrlSolver::addObjectives(const rai::Array<ptr<CtrlObjective>>& O) {
@@ -58,23 +59,30 @@ ptr<CtrlObjective> CtrlSolver::addObjective(const FeatureSymbol& feat, const Str
 }
 #endif
 
-void CtrlSolver::update(rai::Configuration& C) {
-  //-- update the KOMO configurations (push one step back, and update current configuration)
-  //the joint state:
-  arr qold = komo.getConfiguration_q(-1);
-  arr q = C.getJointState();
-  for(int t=-komo.k_order; t<0; t++) komo.setConfiguration(t, komo.getConfiguration_q(t+1));
-  komo.setConfiguration(-1, q);
-  komo.setConfiguration(0, q); // + (q-qold));
-  //the frame state of roots only:
+void CtrlSolver::update(const arr& q_real, const arr& qDot_real, rai::Configuration& C) {
+  //-- pushback frame states of roots (e.g. moving objects)
   uintA roots = framesToIndices(C.getRoots());
-  arr X = C.getFrameState(roots);
   for(int t=-komo.k_order; t<0; t++){
     arr Xt = komo.pathConfig.getFrameState(roots+komo.timeSlices(komo.k_order+t+1,0)->ID);
     komo.pathConfig.setFrameState(Xt, roots+komo.timeSlices(komo.k_order+t,0)->ID);
   }
-  komo.pathConfig.setFrameState(X, roots+komo.timeSlices(komo.k_order-1,0)->ID);
-  komo.pathConfig.setFrameState(X, roots+komo.timeSlices(komo.k_order,0)->ID);
+  //-- if C given, adopt frame states of roots (e.g. moving objects)
+  if(!!C){
+    arr X = C.getFrameState(roots);
+    komo.pathConfig.setFrameState(X, roots+komo.timeSlices(komo.k_order-1,0)->ID);
+    komo.pathConfig.setFrameState(X, roots+komo.timeSlices(komo.k_order,0)->ID);
+  }
+  //-- use the q_real and qDot_real to define the prefix
+  //the joint state:
+  if(komo.k_order==2){
+    if(qDot_real.N) komo.setConfiguration_qAll(-2, q_real - tau*qDot_real);
+    else komo.setConfiguration_qAll(-2, komo.getConfiguration_qAll(-1));
+    komo.setConfiguration_qAll(-1, q_real);
+    komo.setConfiguration_qAll( 0, q_real);
+  }else if(komo.k_order==1){
+    komo.setConfiguration_qAll(-1, q_real);
+    komo.setConfiguration_qAll( 0, q_real);
+  }else NIY;
 
   komo.pathConfig.ensure_q();
 
@@ -95,6 +103,10 @@ void CtrlSolver::update(rai::Configuration& C) {
         //callbacks
       }
     }
+  }
+  for(const auto& sc : symbolicCommands){
+    //we only care about run
+    if(!sc->isCondition) sc->run(C);
   }
 }
 
@@ -123,20 +135,24 @@ arr CtrlSolver::solve() {
   opt.stopGTolerance = 1e-4;
   opt.stopIters = 20;
 //  opt.nonStrictSteps=-1;
-  opt.maxStep = .1; //*tau; //maxVel*tau;
-  opt.damping = 1e-3;
-//  komo.verbose=4;
+//  opt.maxStep = .1; //*tau; //maxVel*tau;
+  opt.damping = 1e-1;
+  komo.verbose=0;
   komo.animateOptimization=animate;
   komo.optimize(0., opt);
   optReport = komo.getReport(false);
-  if(optReport.get<double>("sos")>.1){
+  if(optReport.get<double>("sos")>1.1
+     || optReport.get<double>("eq")>.01
+     || optReport.get<double>("ineq")>.01){
       cout <<optReport <<endl <<"something's wrong?" <<endl;
+      //UNDO OPTIMIZATION:
+//      komo.setConfiguration_qOrg(0, komo.getConfiguration_qOrg(-1));
       rai::wait();
 //      animate=2;
   }
 //  komo.checkGradients();
 //  komo.pathConfig.watch(false, "komo");
-  return komo.getPath_q(0);
+  return komo.getConfiguration_qOrg(0);
 #else
   return solve_optim(*this);
 #endif

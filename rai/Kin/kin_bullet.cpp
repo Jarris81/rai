@@ -53,7 +53,7 @@ struct BulletInterface_self {
 
   uint stepCount=0;
 
-  btRigidBody* addGround();
+  btRigidBody* addGround(bool yAxisGravity=false);
   btRigidBody* addLink(rai::Frame* f, int verbose);
 
   btCollisionShape* createCollisionShape(rai::Shape* s);
@@ -62,7 +62,7 @@ struct BulletInterface_self {
 
 // ============================================================================
 
-BulletInterface::BulletInterface(rai::Configuration& C, int verbose) : self(nullptr) {
+BulletInterface::BulletInterface(rai::Configuration& C, int verbose, bool yAxisGravity) : self(nullptr) {
   self = new BulletInterface_self;
 
   if(verbose>0) LOG(0) <<"starting bullet engine ...";
@@ -72,11 +72,15 @@ BulletInterface::BulletInterface(rai::Configuration& C, int verbose) : self(null
   self->overlappingPairCache = new btDbvtBroadphase();
   self->solver = new btSequentialImpulseConstraintSolver;
   self->dynamicsWorld = new btDiscreteDynamicsWorld(self->dispatcher, self->overlappingPairCache, self->solver, self->collisionConfiguration);
-  self->dynamicsWorld->setGravity(btVector3(0, 0, gravity));
+  if(yAxisGravity){
+    self->dynamicsWorld->setGravity(btVector3(0, gravity, 0));
+  }else{
+    self->dynamicsWorld->setGravity(btVector3(0, 0, gravity));
+  }
 
   if(verbose>0) LOG(0) <<"... done starting bullet engine";
 
-  self->addGround();
+  self->addGround(yAxisGravity);
 
   if(verbose>0) LOG(0) <<"creating Configuration within bullet ...";
 
@@ -114,15 +118,15 @@ void BulletInterface::step(double tau) {
   self->dynamicsWorld->stepSimulation(tau);
 }
 
-void BulletInterface::pullDynamicStates(FrameL& frames, arr& frameVelocities) {
+void pullPoses(FrameL& frames, const rai::Array<btRigidBody*>& actors, arr& frameVelocities, bool alsoStaticAndKinematic){
   if(!!frameVelocities) frameVelocities.resize(frames.N, 2, 3).setZero();
 
   for(rai::Frame* f : frames) {
-    if(self->actors.N <= f->ID) continue;
-    btRigidBody* b = self->actors(f->ID);
+    if(actors.N <= f->ID) continue;
+    btRigidBody* b = actors(f->ID);
     if(!b) continue;
 
-    if(self->actorTypes(f->ID) == rai::BT_dynamic) {
+    if(alsoStaticAndKinematic || !b->isStaticOrKinematicObject()){
       rai::Transformation X;
       btTransform pose;
       if(b->getMotionState()) {
@@ -138,6 +142,10 @@ void BulletInterface::pullDynamicStates(FrameL& frames, arr& frameVelocities) {
       }
     }
   }
+}
+
+void BulletInterface::pullDynamicStates(FrameL& frames, arr& frameVelocities) {
+  pullPoses(frames, self->actors, frameVelocities, false);
 }
 
 void BulletInterface::changeObjectType(rai::Frame* f, int _type) {
@@ -195,12 +203,16 @@ void BulletInterface::pushFullState(const FrameL& frames, const arr& frameVeloci
   self->dynamicsWorld->stepSimulation(.01); //without this, two consequtive pushFullState won't work! (something active tag?)
 }
 
-btRigidBody* BulletInterface_self::addGround() {
+btRigidBody* BulletInterface_self::addGround(bool yAxisGravity) {
   btTransform groundTransform;
   groundTransform.setIdentity();
   groundTransform.setOrigin(btVector3(0, 0, 0));
   btCollisionShape* groundShape;
-  groundShape = new btStaticPlaneShape(btVector3(0, 0, 1), 0);
+  if(yAxisGravity){
+    groundShape = new btStaticPlaneShape(btVector3(0, 1, 0), 0);
+  }else{
+    groundShape = new btStaticPlaneShape(btVector3(0, 0, 1), 0);
+  }
   collisionShapes.push_back(groundShape);
   btDefaultMotionState* myMotionState = new btDefaultMotionState(groundTransform);
   btRigidBody::btRigidBodyConstructionInfo rbInfo(0, myMotionState, groundShape, btVector3(0, 0, 0));
@@ -212,10 +224,30 @@ btRigidBody* BulletInterface_self::addGround() {
 
 btRigidBody* BulletInterface_self::addLink(rai::Frame* f, int verbose) {
   //-- collect all shapes of that link
-  FrameL parts = {f};
-  f->getRigidSubFrames(parts);
   ShapeL shapes;
-  for(rai::Frame* p: parts) if(p->shape && p->getShape().type()!=rai::ST_marker) shapes.append(p->shape);
+  {
+    FrameL tmp = {f};
+    f->getRigidSubFrames(tmp);
+    for(rai::Frame* p: tmp){
+      if(p->shape
+         && p->getShape().type()!=rai::ST_marker
+         && p->getShape().alpha()==1.) shapes.append(p->shape);
+    }
+  }
+
+  //-- check inertia
+  bool shapesHaveInertia=false;
+  for(rai::Shape *s:shapes) if(s->frame.inertia){ shapesHaveInertia=true; break; }
+  if(shapesHaveInertia && !f->inertia){
+    f->computeCompoundInertia();
+    if(!f->inertia->com.isZero){
+      CHECK(!f->shape || f->shape->type()==rai::ST_marker, "can't translate this frame if it has a shape attached");
+      f->set_X()->pos += f->ensure_X().rot * f->inertia->com;
+      for(rai::Frame* ch:f->children) ch->set_Q()->pos -= f->inertia->com;
+      f->inertia->com.setZero();
+//MISSING HERE: ALSO TRANSFORM THE INERTIA MATRIX TO BECOME DIAG!
+    }
+  }
 
   //-- decide on the type
   rai::BodyType type = rai::BT_static;
@@ -249,19 +281,25 @@ btRigidBody* BulletInterface_self::addLink(rai::Frame* f, int verbose) {
   btDefaultMotionState* motionState = new btDefaultMotionState(pose);
   btRigidBody* body = new btRigidBody(btRigidBody::btRigidBodyConstructionInfo(mass, motionState, colShape, localInertia));
 
+  //-- these are physics tweaks - TODO: introduce global parameters for them
   double fric=1.;
   if(shapes.N==1 && f == &shapes.scalar()->frame) {
     //try to read friction from attributes
-    shapes.scalar()->frame.ats.get<double>(fric, "friction");
+    if(shapes.scalar()->frame.ats) shapes.scalar()->frame.ats->get<double>(fric, "friction");
   }
   body->setFriction(fric);
-  body->setRollingFriction(.01);
-  body->setSpinningFriction(.01);
+//  body->setRollingFriction(.01);
+//  body->setSpinningFriction(.01);
 //  cout <<body->getContactStiffness() <<endl;
 //  cout <<body->getContactDamping() <<endl;
 //  body->setContactStiffnessAndDamping(1e4, 1e-1);
 //  body->setContactStiffnessAndDamping(1e7, 3e4);
-  body->setRestitution(objectRestitution);
+  {
+    double restitution=-1.;
+    for(auto s:shapes) if(s->frame.ats) s->frame.ats->get<double>(restitution, "restitution");
+    if(restitution>0.) body->setRestitution(restitution);
+  }
+
   dynamicsWorld->addRigidBody(body);
 
   if(type==rai::BT_kinematic) {
@@ -341,9 +379,57 @@ btCollisionShape* BulletInterface_self::createCompoundCollisionShape(rai::Frame*
   return colShape;
 }
 
+BulletBridge::BulletBridge(btDiscreteDynamicsWorld* _dynamicsWorld) : dynamicsWorld(_dynamicsWorld) {
+  btCollisionObjectArray& collisionObjects = dynamicsWorld->getCollisionObjectArray();
+  actors.resize(collisionObjects.size()).setZero();
+  for(int i=0;i<collisionObjects.size();i++){
+    actors(i) = btRigidBody::upcast(collisionObjects[i]);
+  }
+}
+
+void BulletBridge::getConfiguration(rai::Configuration& C){
+  btCollisionObjectArray& collisionObjects = dynamicsWorld->getCollisionObjectArray();
+  for(int i=0;i<collisionObjects.size();i++){
+    btCollisionObject* obj = collisionObjects[i];
+    btCollisionShape* shape = obj->getCollisionShape();
+    btRigidBody* body = btRigidBody::upcast(obj);
+    rai::Transformation X;
+    btTransform pose;
+    if(body->getMotionState()) {
+      body->getMotionState()->getWorldTransform(pose);
+    } else {
+      NIY; //trans = obj->getWorldTransform();
+    }
+    btTrans2raiTrans(X, pose);
+    cout <<"OBJECT " <<i <<" pose: " <<X <<" shapeType: " <<shape->getShapeType() <<' ' <<shape->getName();
+    switch(shape->getShapeType()){
+      case BOX_SHAPE_PROXYTYPE:{
+        btBoxShape* box = dynamic_cast<btBoxShape*>(shape);
+        arr size = 2.*conv_btVec3_arr(box->getHalfExtentsWithMargin());
+        cout <<" margin: " <<box->getMargin() <<" size: " <<size;
+        auto& f = C.addFrame(STRING("obj"<<i))
+            ->setShape(rai::ST_box, size)
+            .setPose(X);
+        double mInv = body->getInvMass();
+        if(mInv>0.) f.setMass(1./mInv);
+      } break;
+      default: NIY;
+    }
+    cout <<endl;
+  }
+}
+
+
+
+void BulletBridge::pullPoses(rai::Configuration& C, bool alsoStaticAndKinematic){
+  CHECK_EQ(C.frames.N, actors.N, "");
+  ::pullPoses(C.frames, actors, NoArr, alsoStaticAndKinematic);
+}
+
+
 #else
 
-BulletInterface::BulletInterface(rai::Configuration& K, int verbose) { NICO }
+BulletInterface::BulletInterface(rai::Configuration& K, int verbose, bool yAxisGravity) { NICO }
 BulletInterface::~BulletInterface() { NICO }
 void BulletInterface::step(double tau) { NICO }
 void BulletInterface::pushFullState(const FrameL& frames, const arr& vel) { NICO }

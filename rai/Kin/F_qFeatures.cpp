@@ -17,17 +17,11 @@ F_qItself::F_qItself(bool relative_q0) : relative_q0(relative_q0) {}
 F_qItself::F_qItself(PickMode pickMode, const StringA& picks, const rai::Configuration& C, bool relative_q0)
   : relative_q0(relative_q0) {
   if(pickMode==allActiveJoints) {
-    for(rai::Frame* f: C.frames) if(f->joint && f->joint->active && f->joint->dim!=0){
+    for(rai::Frame* f: C.frames) if(f->joint && f->parent && f->joint->active && f->joint->dim!=0){
       frameIDs.append(f->ID);
       frameIDs.append(f->parent->ID);
     }
     frameIDs.reshape(-1,2);
-  }else if(pickMode==byJointGroups) {
-    for(rai::Frame* f: C.frames) {
-      bool pick=false;
-      for(const rai::String& s:picks) if(f->ats.getNode(s)) { pick=true; break; }
-      if(pick) frameIDs.setAppend(f->ID);
-    }
   }else if(pickMode==byJointNames) {
     for(rai::String s:picks) {
       if(s(-2)==':') s.resize(s.N-2, true);
@@ -37,7 +31,7 @@ F_qItself::F_qItself(PickMode pickMode, const StringA& picks, const rai::Configu
       frameIDs.setAppend(f->ID);
     }
   }else if(pickMode==byExcludeJointNames) {
-    for(rai::Joint* j: C.activeJoints) {
+    for(rai::Dof* j: C.activeJoints) {
       if(picks.contains(j->frame->name)) continue;
       frameIDs.setAppend(j->frame->ID);
     }
@@ -57,7 +51,7 @@ void F_qItself::phi(arr& q, arr& J, const rai::Configuration& C) {
   if(!frameIDs.nd) {
     q = C.getJointState();
     if(relative_q0) {
-      for(rai::Joint* j: C.activeJoints) if(j->q0.N && j->qDim()==1) q(j->qIndex) -= j->q0.scalar();
+      for(rai::Dof* j: C.activeJoints) if(j->joint() && j->dim==1 && j->joint()->q0.N) q(j->qIndex) -= j->joint()->q0.scalar();
     }
     if(!!J) J.setId(q.N);
   } else {
@@ -102,7 +96,7 @@ void F_qItself::phi(arr& q, arr& J, const rai::Configuration& C) {
 
 void F_qItself::phi2(arr& q, arr& J, const FrameL& F) {
   if(order!=0){
-    Feature::phi2(q, J, F);
+    phi_finiteDifferenceReduce(q, J, F);
     return;
   }
   uint n=dim_phi2(F);
@@ -165,7 +159,7 @@ uint F_qItself::dim_phi(const rai::Configuration& C) {
         else HALT("a (" <<a->name <<") and b (" <<b->name <<") are not linked");
         CHECK(j, "");
       }
-      n += j->qDim();
+      n += j->dim;
     }
     return n;
   }
@@ -199,7 +193,7 @@ void F_qZeroVel::phi2(arr& y, arr& J, const FrameL& F){
   CHECK_EQ(order, 1, "");
   F_qItself()
       .setOrder(order)
-      .__phi2(y, J, F);
+      .eval(y, J, F);
 #if 1
   rai::Frame *f = F.last();
   if(f->joint->type==rai::JT_transXYPhi) {
@@ -218,7 +212,7 @@ void F_qZeroVel::phi2(arr& y, arr& J, const FrameL& F){
 uint F_qZeroVel::dim_phi2(const FrameL& F){
   return F_qItself()
       .setOrder(order)
-      .__dim_phi2(F);
+      .dim(F);
 }
 
 //===========================================================================
@@ -266,7 +260,7 @@ void F_qLimits2::phi2(arr& y, arr& J, const FrameL& F){
     rai::Joint *j = f->joint;
     if(!j) continue;
     if(!j->limits.N) continue;
-    uint d=j->qDim();
+    uint d=j->dim;
     for(uint k=0; k<d; k++) { //in case joint has multiple dimensions
       double lo = j->limits(2*k+0);
       double up = j->limits(2*k+1);
@@ -287,7 +281,7 @@ uint F_qLimits2::dim_phi2(const FrameL& F) {
     rai::Joint *j = f->joint;
     if(!j) continue;
     if(!j->limits.N) continue;
-    m += 2*j->qDim();
+    m += 2*j->dim;
   }
   return m;
 }
@@ -310,7 +304,7 @@ void F_qQuaternionNorms::phi2(arr& y, arr& J, const FrameL& F) {
   uint i=0;
   for(const rai::Frame* f:F) {
     rai::Joint *j = f->joint;
-    if(!j) continue;
+    if(!j || !j->active) continue;
     if(j->type==rai::JT_quatBall || j->type==rai::JT_free || j->type==rai::JT_XBall) {
       arr q;
       if(j->type==rai::JT_quatBall) q.referToRange(C.q, j->qIndex+0, j->qIndex+3);
@@ -333,7 +327,7 @@ uint F_qQuaternionNorms::dim_phi2(const FrameL& F) {
   uint n=0;
   for(const rai::Frame* f:F) {
     rai::Joint *j = f->joint;
-    if(!j) continue;
+    if(!j || !j->active) continue;
     if(j->type==rai::JT_quatBall || j->type==rai::JT_free || j->type==rai::JT_XBall) n++;
   }
   return n;
@@ -341,8 +335,9 @@ uint F_qQuaternionNorms::dim_phi2(const FrameL& F) {
 
 void F_qQuaternionNorms::setAllActiveQuats(const rai::Configuration& C){
   frameIDs.clear();
-  for(const rai::Joint* j:C.activeJoints) {
-    if(j->type==rai::JT_quatBall || j->type==rai::JT_free || j->type==rai::JT_XBall) frameIDs.append(j->frame->ID);
+  for(const rai::Dof* dof:C.activeJoints) {
+    const rai::Joint* j = dof->joint();
+    if(j && (j->type==rai::JT_quatBall || j->type==rai::JT_free || j->type==rai::JT_XBall)) frameIDs.append(j->frame->ID);
   }
 }
 
@@ -389,6 +384,7 @@ uintA getNonSwitchedFrames(const FrameL& A, const FrameL& B) {
     rai::Frame* f1 = B.elem(i);
     if(!f0->joint || !f1->joint) continue;
     if(f0->joint->type!=f1->joint->type) continue;
+    if(f0->joint->mimic || f1->joint->mimic) continue;
     if(f0->ID - f0->parent->ID != f1->ID-f1->parent->ID) continue; //comparing the DIFFERENCE in IDs between parent and joint
     nonSwitchedFrames.append(i);
   }

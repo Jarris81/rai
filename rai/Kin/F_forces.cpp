@@ -155,6 +155,13 @@ void F_fex_Force::phi2(arr& y, arr& J, const FrameL& F) {
   ex->kinForce(y, J);
 }
 
+void F_fex_Torque::phi2(arr& y, arr& J, const FrameL& F){
+  if(order>0){  Feature::phi2(y, J, F);  return;  }
+  CHECK_EQ(F.N, 2, "");
+  rai::ForceExchange* ex = getContact(F.elem(0), F.elem(1));
+  ex->kinTorque(y, J);
+}
+
 void F_fex_Wrench::phi2(arr& y, arr& J, const FrameL& F){
   if(order>0){  Feature::phi2(y, J, F);  return;  }
   CHECK_EQ(F.N, 2, "");
@@ -297,13 +304,16 @@ void F_NewtonEuler::phi2(arr& y, arr& J, const FrameL& F) {
   Value fo = F_TotalForce(true) // ignore gravity
              .eval({F.elem(-2)}); // ! THIS IS THE MID TIME SLICE !
 
-  //-- collect gravity change-of-velocities -> MULTIPLIES WITH TAU! (this is where tau optimization has major effect!)
-  Value grav = F_GravityAcceleration()
-               .setImpulseInsteadOfAcceleration()
-               .eval({F.elem(-1)}); //END TIME SLICE!
-  //-- subtract nominal gravity change-of-velocity from object change-of-velocity
-  acc.y -= grav.y;
-  acc.J -= grav.J;
+  if(useGravity){
+    //-- collect gravity change-of-velocities -> MULTIPLIES WITH TAU! (this is where tau optimization has major effect!)
+    Value grav = F_GravityAcceleration()
+                 .setImpulseInsteadOfAcceleration()
+                 .eval({F.elem(-1)}); //END TIME SLICE!
+
+    //-- subtract nominal gravity change-of-velocity from object change-of-velocity
+    acc.y -= grav.y;
+    acc.J -= grav.J;
+  }
 #else
   //-- add static and exchange forces
   Value fo = F_TotalForce(false)
@@ -387,7 +397,7 @@ void F_NewtonEuler_DampedVelocities::phi2(arr& y, arr& J, const FrameL& F) {
 void F_Energy::phi2(arr& y, arr& J, const FrameL& F) {
   if(order==2){
     diffInsteadOfVel=true;
-    Feature::phi2(y, J, F);
+    phi_finiteDifferenceReduce(y, J, F);
     diffInsteadOfVel=false;
     return;
   }

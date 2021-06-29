@@ -8,6 +8,8 @@
 
 #include "splineRunner.h"
 
+namespace rai {
+
 void SplineRunner::set(const arr& x, const arr& t, const arr& x0, bool append) {
   if(!refTimes.N) append=false;
 
@@ -29,10 +31,10 @@ void SplineRunner::set(const arr& x, const arr& t, const arr& x0, bool append) {
 }
 
 arr SplineRunner::run(double dt, arr& qref_dot) {
-  if(refSpline.points.N) {
+  if(refSpline.knotPoints.N) {
     //read out the new reference
     phase += dt;
-    double maxPhase = refSpline.times.last();
+    double maxPhase = refSpline.knotTimes.last();
     arr q_ref = refSpline.eval(phase);
     if(!!qref_dot) qref_dot = refSpline.eval(phase, 1);
     if(phase>maxPhase) { //clear spline buffer
@@ -46,7 +48,7 @@ arr SplineRunner::run(double dt, arr& qref_dot) {
 
 double SplineRunner::timeToGo() {
   double maxPhase = 0.;
-  if(refSpline.points.N) maxPhase = refSpline.times.last();
+  if(refSpline.knotPoints.N) maxPhase = refSpline.knotTimes.last();
   return maxPhase - phase;
 }
 
@@ -56,3 +58,5 @@ void SplineRunner::stop() {
   refTimes.clear();
   refSpline.clear();
 }
+
+} //namespace

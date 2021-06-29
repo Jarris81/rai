@@ -370,10 +370,13 @@ struct GlfwSpinner : Thread {
   }
 
   static void _Close(GLFWwindow* window) {
-    OpenGL* gl=(OpenGL*)glfwGetWindowUserPointer(window);
+//    OpenGL* gl=(OpenGL*)glfwGetWindowUserPointer(window);
+//    LOG(-1) <<"closing window";
 //      if (!time_to_close)
 //    OpenGL *gl=(OpenGL*)glfwSetWindowShouldClose(window, GLFW_FALSE);
-    gl->WindowStatus(0);
+//    gl->WindowStatus(0);
+    glfwHideWindow(window);
+//    gl->closeWindow();
   }
 
   static void _Scroll(GLFWwindow* window, double xoffset, double yoffset) {
@@ -431,6 +434,8 @@ void OpenGL::openWindow() {
     fg->mutex.unlock();
 
     fg->addGL(this);
+  }else{
+    //glfwShowWindow(self->window);
   }
 }
 
@@ -449,6 +454,12 @@ void OpenGL::closeWindow() {
   }
 }
 
+void OpenGL::raiseWindow(){
+  if(self->window) {
+    glfwFocusWindow(self->window);
+  }
+}
+
 void OpenGL::setTitle(const char* _title) {
   if(_title) title = _title;
   if(self->window) {
@@ -456,20 +467,20 @@ void OpenGL::setTitle(const char* _title) {
   }
 }
 
-void OpenGL::beginNonThreadedDraw() {
+void OpenGL::beginNonThreadedDraw(bool fromWithinCallback) {
   if(rai::getDisableGui()) return;
   openWindow();
   auto fg = singletonGlSpinner();
-  fg->mutex.lock(RAI_HERE);
+  if(!fromWithinCallback) fg->mutex.lock(RAI_HERE);
   glfwMakeContextCurrent(self->window);
 }
 
-void OpenGL::endNonThreadedDraw() {
+void OpenGL::endNonThreadedDraw(bool fromWithinCallback) {
   if(rai::getDisableGui()) return;
   auto fg = singletonGlSpinner();
   glfwSwapBuffers(self->window);
   glfwMakeContextCurrent(nullptr);
-  fg->mutex.unlock();
+  if(!fromWithinCallback) fg->mutex.unlock();
 }
 
 void OpenGL::postRedrawEvent(bool fromWithinCallback) {
@@ -563,9 +574,9 @@ void glStandardLight(void*, OpenGL&) {
 void glStandardScene(void*, OpenGL& gl) {
   glPushAttrib(GL_CURRENT_BIT);
   glStandardLight(nullptr, gl);
-  //  glDrawFloor(10, .8, .8, .8);
-  //  glDrawFloor(10, 1.5, 0.83, .0);
-  glDrawFloor(10., 108./255., 123./255., 139./255.);
+  glDrawFloor(10, .5, .55, .6);
+  // glDrawFloor(10, 1.5, 0.83, .0);
+  // glDrawFloor(10., 108./255., 123./255., 139./255.);
   glDrawAxes(.1);
   glPopAttrib();
 }
@@ -1559,6 +1570,7 @@ OpenGL* OpenGL::newClone() const {
 void OpenGL::init() {
   drawFocus=false;
   clearR=clearG=clearB=1.; clearA=0.;
+  pressedkey=0;
   mouseposx=mouseposy=0;
   mouse_button=0;
   mouseIsDown=false;
@@ -1601,7 +1613,6 @@ void OpenGL::add(void (*call)(void*, OpenGL&), void* classP) {
   auto _dataLock = dataLock(RAI_HERE);
   toBeDeletedOnCleanup.append(new CstyleDrawer(call, classP));
   drawers.append(toBeDeletedOnCleanup.last());
-
 }
 
 /// add a draw routine
@@ -1713,6 +1724,8 @@ void OpenGL::Draw(int w, int h, rai::Camera* cam, bool callerHasAlreadyLocked) {
   glEnable(GL_BLEND);  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_CULL_FACE);  glFrontFace(GL_CCW);
   glShadeModel(GL_FLAT);  //glShadeModel(GL_SMOOTH);
+
+  if(drawOptions.pclPointSize>0.) glPointSize(drawOptions.pclPointSize);
 
   //select mode?
   GLint mode;
@@ -1991,7 +2004,10 @@ int OpenGL::update(const char* txt, bool nonThreaded) {
   }
 #endif
 #endif
-  return pressedkey;
+  int key=pressedkey;
+  pressedkey=0;
+//  if(key) LOG(0) <<"KEY! " <<key;
+  return key;
 }
 
 /// waits some msecons before updating
@@ -2235,15 +2251,19 @@ void OpenGL::MouseButton(int button, int downPressed, int _x, int _y, int mods) 
     drawFocus = false;
     if(!downPressed) {
       drawOptions.drawMode_idColor = true;
+      beginNonThreadedDraw(true);
       Draw(w, h, nullptr, true);
-      double x=mouseposx, y=mouseposy, d = captureDepth(mouseposy, mouseposx);
+      endNonThreadedDraw(true);
+      float d = captureDepth(mouseposy, mouseposx);
+      arr x = {double(mouseposx), double(mouseposy), d};
+//      cout <<" image coords: " <<x;
       if(d<.01 || d==1.) {
         cout <<"NO SELECTION: SELECTION DEPTH = " <<d <<' ' <<camera.glConvertToTrueDepth(d) <<endl;
       } else {
-        unproject(x, y, d, true, mouseView);
+        camera.unproject_fromPixelsAndGLDepth(x, width, height);
       }
-      cout <<"SELECTION: ID: " <<color2id(&captureImage(mouseposy, mouseposx, 0))
-           <<" point: (" <<x <<' ' <<y <<' ' <<d <<")" <<endl;
+      LOG(1) <<"SELECTION: ID: " <<color2id(&captureImage(mouseposy, mouseposx, 0))
+            <<" world coords: " <<x;
     }
   } else {
     drawOptions.drawMode_idColor = false;
@@ -2268,6 +2288,7 @@ void OpenGL::MouseButton(int button, int downPressed, int _x, int _y, int mods) 
         cam->unproject_fromPixelsAndGLDepth(x, width, height);
         cam->focus(x);
       }
+      LOG(1) <<"FOCUS: world coords: " <<x;
     }
   }
 
@@ -2682,3 +2703,6 @@ void read_png(byteA& img, const char* file_name, bool swap_rows) {
 #endif
 }
 
+RUN_ON_INIT_BEGIN(opengl)
+rai::Array<GLDrawer*>::memMove=1;
+RUN_ON_INIT_END(opengl)

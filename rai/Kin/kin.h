@@ -23,6 +23,7 @@ struct FeatherstoneInterface;
 
 namespace rai {
 
+struct Dof;
 struct Joint;
 struct Shape;
 struct Frame;
@@ -39,8 +40,17 @@ struct ConfigurationViewer;
 
 //===========================================================================
 
+struct Value {
+  arr y, J;
+  Value(){}
+  Value(const arr& y, const arr& J) : y(y), J(J) {}
+  void write(ostream& os) const { os <<"y:" <<y <<" J:" <<J; }
+};
+stdOutPipe(Value)
+
 extern rai::Configuration& NoConfiguration;
 
+typedef rai::Array<rai::Dof*> DofL;
 typedef rai::Array<rai::Joint*> JointL;
 //typedef rai::Array<rai::Shape*> ShapeL;
 typedef rai::Array<rai::Frame*> FrameL;
@@ -50,9 +60,9 @@ typedef rai::Array<rai::ForceExchange*> ForceExchangeL;
 typedef rai::Array<rai::KinematicSwitch*> KinematicSwitchL;
 typedef rai::Array<rai::Configuration*> ConfigurationL;
 
-//===========================================================================
-
 namespace rai {
+
+//===========================================================================
 
 /// data structure to store a kinematic/physical situation (lists of frames (with joints, shapes, inertias), forces & proxies)
 struct Configuration : GLDrawer {
@@ -66,7 +76,7 @@ struct Configuration : GLDrawer {
   arr qInactive;    ///< configuration state of all inactive DOFs
 
   //-- data structure state (lazy evaluation leave the state structure out of sync)
-  JointL activeJoints; //list of currently active joints (computed with ensure_activeSets(); reset with reset_q())
+  DofL activeJoints; //list of currently active joints (computed with ensure_activeSets(); reset with reset_q())
   bool _state_indexedJoints_areGood=false; // the active sets, incl. their topological sorting, are up to date
   bool _state_q_isGood=false; // the q-vector represents the current relative transforms (and force dofs)
   bool _state_proxies_isGood=false; // the proxies have been created for the current state
@@ -77,13 +87,6 @@ struct Configuration : GLDrawer {
   JacobianMode jacMode = JM_dense;
 
   static uint setJointStateCount;
-
-  // options -> TODO: somehow refactor away from here
-  bool orsDrawJoints=false, orsDrawShapes=true, orsDrawBodies=true, orsDrawProxies=true, orsDrawMarkers=true, orsDrawColors=true, orsDrawIndexColors=false;
-  bool orsDrawVisualsOnly=false, orsDrawMeshes=true, orsDrawCores=false, orsDrawZlines=false;
-  bool orsDrawFrameNames=false;
-  double orsDrawAlpha=1.;
-  uint orsDrawLimit=0;
 
   /// @name constructors
   Configuration();
@@ -100,8 +103,8 @@ struct Configuration : GLDrawer {
   Frame* addFrame(const char* name, const char* parent=nullptr, const char* args=nullptr);
   Frame* addFile(const char* filename);
   void addAssimp(const char* filename);
-  void addCopies(const FrameL& F, const ForceExchangeL& _forces);
-  void addConfiguration(const Configuration& C){ addCopies(C.frames, C.forces); } ///< same as addCopies() with C.frames and C.forces
+  Frame* addCopies(const FrameL& F, const ForceExchangeL& _forces);
+  void addConfiguration(const Configuration& C, double tau=1.);
 
   /// @name get frames
   Frame* operator[](const char* name) const { return getFrame(name, true); }  ///< same as getFrame()
@@ -113,37 +116,39 @@ struct Configuration : GLDrawer {
   StringA getFrameNames() const;
   FrameL getJoints(bool activesOnly=true) const;
   FrameL getJointsSlice(uint t, bool activesOnly=true) const;
+  FrameL getJointsSlice(const FrameL& slice, bool activesOnly=true) const;
   uintA getJointIDs() const;
   StringA getJointNames() const;
   uintA getCtrlFramesAndScale(arr& scale=NoArr) const;
   FrameL getRoots() const;
   FrameL getLinks() const;
 
-  /// @name get state
+  /// @name get dof or frame state
   uint getJointStateDimension() const;
   const arr& getJointState() const;
-  arr getJointState(const FrameL& F, bool activesOnly=true) const;
-  arr getJointState(const uintA& F, bool activesOnly=true) const { return getJointState(getFrames(F), activesOnly); } ///< same as getJointState() with getFrames()
-  arr getJointStateSlice(uint t, bool activesOnly=true){  return getJointState(getJointsSlice(t, activesOnly), activesOnly);  }
+  arr getJointState(const FrameL& F) const;
+  arr getJointState(const uintA& F) const { return getJointState(getFrames(F)); } ///< same as getJointState() with getFrames()
+  arr getJointStateSlice(uint t, bool activesOnly=true){  return getJointState(getJointsSlice(t, activesOnly));  }
   arr getFrameState() const { return getFrameState(frames); } ///< same as getFrameState() for all \ref frames
   arr getFrameState(const FrameL& F) const;
   arr getFrameState(const uintA& F) const { return getFrameState(getFrames(F)); } ///< same as getFrameState() with getFrames()
 
   /// @name set state
   void setJointState(const arr& _q);
-  void setJointState(const arr& _q, const FrameL& F, bool activesOnly=true);
-  void setJointState(const arr& _q, const uintA& F){ setJointState(_q, getFrames(F), true); } ///< same as setJointState() with getFrames()
-  void setJointStateSlice(const arr& _q, uint t, bool activesOnly=true){  setJointState(_q, getJointsSlice(t, activesOnly), activesOnly);  }
+  void setJointState(const arr& _q, const FrameL& F);
+  void setJointState(const arr& _q, const uintA& F){ setJointState(_q, getFrames(F)); } ///< same as setJointState() with getFrames()
+  void setJointStateSlice(const arr& _q, uint t, bool activesOnly=true){  setJointState(_q, getJointsSlice(t, activesOnly));  }
   void setFrameState(const arr& X){ setFrameState(X, frames); } ///< same as setFrameState() for all \ref frames
   void setFrameState(const arr& X, const FrameL& F);
   void setFrameState(const arr& X, const uintA& F){ setFrameState(X, getFrames(F)); } ///< same as setFrameState() with getFrames()
   void setTaus(double tau);
 
   /// @name active DOFs selection
+  void setActiveJoints(const DofL& F);
   void selectJoints(const FrameL& F, bool notThose=false);
   void selectJointsByName(const StringA&, bool notThose=false);
-  void selectJointsByGroup(const StringA& groupNames, bool notThose=false);
   void selectJointsBySubtrees(const FrameL& roots, bool notThose=false);
+  void selectJointsByAtt(const StringA& attNames, bool notThose=false);
 
   /// @name get other information
   arr getCtrlMetric() const;
@@ -175,17 +180,18 @@ struct Configuration : GLDrawer {
   Joint* attach(const char* a, const char* b);
   uintA getCollisionExcludeIDs(bool verbose=false);
   uintA getCollisionExcludePairIDs(bool verbose=false);
+  FrameL getCollisionAllPairs();
   void prefixNames(bool clear=false);
 
   /// @name computations on the tree
-  void calc_indexedActiveJoints(); ///< sort of private: count the joint dimensionalities and assign j->q_index
+  void calc_indexedActiveJoints(bool resetActiveJointSet=true); ///< sort of private: count the joint dimensionalities and assign j->q_index
   void calc_Q_from_q();  ///< from q compute the joint's Q transformations
-  void calc_q_from_Q();  ///< updates q based on the joint's Q transformations
+  void calcDofsFromConfig();  ///< updates q based on the joint's Q transformations
   arr calc_fwdPropagateVelocities(const arr& qdot);    ///< elementary forward kinematics
 
   /// @name ensure state consistencies
   void ensure_indexedJoints() {   if(!_state_indexedJoints_areGood) calc_indexedActiveJoints();  }
-  void ensure_q() {  if(!_state_q_isGood) calc_q_from_Q();  }
+  void ensure_q() {  if(!_state_q_isGood) calcDofsFromConfig();  }
   void ensure_proxies() {  if(!_state_proxies_isGood) stepSwift();  }
 
   /// @name Jacobians and kinematics (low level)
@@ -210,6 +216,8 @@ struct Configuration : GLDrawer {
   /// @name features
   shared_ptr<Feature> feature(FeatureSymbol fs, const StringA& frames= {}) const;
   void evalFeature(arr& y, arr& J, FeatureSymbol fs, const StringA& frames= {}) const;
+  template<class T> Value eval(const StringA& frames= {}){ return T().eval(getFrames(frames)); }
+  Value eval(FeatureSymbol fs, const StringA& frames= {});
 
   /// @name high level inverse kinematics
   void inverseKinematicsPos(Frame& frame, const arr& ytarget, const Vector& rel_offset=NoVector, int max_iter=3);
@@ -274,6 +282,7 @@ stdPipes(Configuration)
 
 uintA framesToIndices(const FrameL& frames);
 uintA jointsToIndices(const JointL& joints);
+StringA framesToNames(const FrameL& frames);
 
 //===========================================================================
 //

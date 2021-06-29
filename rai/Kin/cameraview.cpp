@@ -54,11 +54,12 @@ rai::CameraView::Sensor& rai::CameraView::addSensor(const char* frameAttached) {
   double orthoAbsHeight=-1.;
   arr zRange;
 
-  frame->ats.get<double>(focalLength, "focalLength");
-  frame->ats.get<double>(orthoAbsHeight, "orthoAbsHeight");
-  frame->ats.get<arr>(zRange, "zRange");
-  frame->ats.get<double>(width, "width");
-  frame->ats.get<double>(height, "height");
+  CHECK(frame->ats, "");
+  frame->ats->get<double>(focalLength, "focalLength");
+  frame->ats->get<double>(orthoAbsHeight, "orthoAbsHeight");
+  frame->ats->get<arr>(zRange, "zRange");
+  frame->ats->get<double>(width, "width");
+  frame->ats->get<double>(height, "height");
 
   return addSensor(frameAttached, frameAttached, width, height, focalLength, orthoAbsHeight, zRange);
 }
@@ -90,7 +91,7 @@ void rai::CameraView::updateConfiguration(const rai::Configuration& newC) {
     if(renderMode==seg) { //update frameIDmap
       frameIDmap.resize(C.frames.N).setZero();
       for(rai::Frame* f:C.frames) {
-        int* label=f->ats.find<int>("label");
+        int* label=f->ats->find<int>("label");
         if(label) frameIDmap(f->ID) = *label;
       }
     }
@@ -198,11 +199,9 @@ void rai::CameraView::glDraw(OpenGL& gl) {
     glStandardScene(nullptr, gl);
     gl.drawOptions.drawMode_idColor = false;
     if(renderMode==visuals) {
-      C.orsDrawVisualsOnly=true;
-      C.orsDrawMarkers = false;
+      gl.drawOptions.drawVisualsOnly=true;
     } else {
-      C.orsDrawVisualsOnly=false;
-      C.orsDrawMarkers = true;
+      gl.drawOptions.drawVisualsOnly=false;
     }
 
     C.glDraw(gl);
@@ -219,8 +218,7 @@ void rai::CameraView::glDraw(OpenGL& gl) {
     gl.setClearColors(1, 1, 1, 0);
     gl.background.clear();
     gl.drawOptions.drawMode_idColor = true;
-    C.orsDrawMarkers = false;
-    C.orsDrawVisualsOnly=true;
+    gl.drawOptions.drawVisualsOnly=true;
     C.glDraw(gl);
     gl.drawOptions.drawMode_idColor = false;
   }

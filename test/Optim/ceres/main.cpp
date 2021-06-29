@@ -165,9 +165,9 @@ void tutorialBasics(){
   komo.run_prepare(.01);
 
 #if 1
-  KOMO::Conv_KOMO_FactoredNLP P(komo);
-//  auto P1 = make_shared<KOMO::Conv_KOMO_SparseUnstructured>(komo, false);
-//  auto P = make_shared<Conv_MathematicalProgram_TrivialStructured>(*P1);
+  komo.solver=rai::KS_dense;
+  auto P1 = komo.nlp_SparseNonFactored();
+  Conv_MathematicalProgram_TrivialFactoreded P(*P1);
 
   checkJacobianCP(P, komo.x, 1e-4);
 
@@ -196,7 +196,7 @@ void tutorialBasics(){
   std::cout << summary.BriefReport() << "\n";
   std::cout << "solution : " <<cer.x_full << "\n";
 
-  komo.set_x2(cer.x_full);
+  komo.set_x(cer.x_full);
   for(uint i=0;i<2;i++) komo.displayTrajectory(.1, true); //play the trajectory
   return;
 #endif
@@ -273,8 +273,8 @@ void TEST(Ceres){
 int main(int argc,char** argv){
   rai::initCmdLine(argc,argv);
 
-//  tutorialBasics();
-  testCeres2();
+  tutorialBasics();
+//  testCeres2();
 
   return 0;
 }

@@ -41,10 +41,10 @@ TaskControlThread::TaskControlThread(const Var<rai::Configuration>& _ctrl_config
   //initialize Kp and Kd
   Kp_base = zeros(q0.N);
   Kd_base = zeros(q0.N);
-  for(rai::Joint* j:ctrl_config.get()->activeJoints) {
-    arr* gains = j->frame->ats.find<arr>("gains");
+  for(rai::Dof* j:ctrl_config.get()->activeJoints) {
+    arr* gains = j->frame->ats->find<arr>("gains");
     if(gains) {
-      for(uint i=0; i<j->qDim(); i++) {
+      for(uint i=0; i<j->dim; i++) {
         Kp_base(j->qIndex+i)=gains->elem(0);
         Kd_base(j->qIndex+i)=gains->elem(1);
       }
@@ -118,7 +118,7 @@ void TaskControlThread::step() {
     }
 
     ctrl_tasks.writeAccess();
-    for(CtrlObjective* t: ctrl_tasks()) NIY; // t->update(.01, K);
+    NIY// for(CtrlObjective* t: ctrl_tasks()) NIY; // t->update(.01, K);
 
     TaskControlMethods taskController(Hmetric);
 
@@ -128,7 +128,7 @@ void TaskControlThread::step() {
     //-- compute IK step
     double maxQStep = 2e-1;
     arr dq;
-    dq = taskController.inverseKinematics({K.data}, ctrl_tasks(), qdot_model, P_compliance); //don't include a null step
+    dq = taskController.inverseKinematics(*K.data, ctrl_tasks(), qdot_model, P_compliance); //don't include a null step
     if(dq.N) {
       double l = length(dq);
       if(l>maxQStep) dq *= maxQStep/l;

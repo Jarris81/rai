@@ -14,12 +14,15 @@ rai::ForceExchange::ForceExchange(rai::Frame& a, rai::Frame& b, ForceExchangeTyp
   : a(a), b(b), type(_type), scale(1.) {
   CHECK(&a != &b, "");
   CHECK_EQ(&a.C, &b.C, "contact between frames of different configuration!");
+  frame=&a;
+  dim = getDimFromType();
   a.C.reset_q();
   a.forces.append(this);
   b.forces.append(this);
   a.C.forces.append(this);
   setZero();
   if(copyContact) {
+    type = copyContact->type;
     poa = copyContact->poa;
     force = copyContact->force;
     torque = copyContact->torque;
@@ -44,7 +47,13 @@ void rai::ForceExchange::setZero() {
   if(__coll) { delete __coll; __coll=0; }
 }
 
-void rai::ForceExchange::calc_F_from_q(const arr& q, uint n) {
+uint rai::ForceExchange::getDimFromType() {
+  if(type==FXT_forceZ) return 1;
+  else if(type==FXT_force) return 3;
+  else return 6;
+}
+
+void rai::ForceExchange::setDofs(const arr& q, uint n) {
   if(type==FXT_poa){
     poa = q({n, n+2});
     force = q({n+3, n+5});
@@ -53,7 +62,18 @@ void rai::ForceExchange::calc_F_from_q(const arr& q, uint n) {
     poa = b.getPosition();
     force = q({n, n+2});
     torque = q({n+3, n+5});
-  }
+  }else if(type==FXT_force){
+    poa = b.getPosition();
+    force = q({n, n+2});
+    torque.resize(3).setZero();
+  }else if(type==FXT_forceZ){
+    poa = b.getPosition();
+    b.C.kinematicsVec(force, NoArr, &b, Vector_z);
+    force *= q(n);
+//    force = (b.ensure_X().rot.getZ() * q(n)).getArr();
+//    force.resize(3).setZero().elem(2) = q(n);
+    torque.resize(3).setZero();
+  }else NIY;
   if(scale!=1.){
     force *= scale;
     torque *= scale;
@@ -61,15 +81,25 @@ void rai::ForceExchange::calc_F_from_q(const arr& q, uint n) {
   if(__coll) { delete __coll; __coll=0; }
 }
 
-arr rai::ForceExchange::calc_q_from_F() const {
-  arr q(6);
+arr rai::ForceExchange::calcDofsFromConfig() const {
+  arr q;
   if(type==FXT_poa){
+    q.resize(6);
     q.setVectorBlock(poa, 0);
     q.setVectorBlock(force/scale, 3);
   }else if(type==FXT_torque){
+    q.resize(6);
     q.setVectorBlock(force/scale, 0);
     q.setVectorBlock(torque/scale, 3);
-  }
+  }else if(type==FXT_force){
+    q = force/scale;
+  }else if(type==FXT_forceZ){
+    arr R = b.ensure_X().rot.getArr();
+    arr Bforce = ~R * force;
+    CHECK_ZERO(Bforce(0), 1e-8, "");
+    CHECK_ZERO(Bforce(1), 1e-8, "");
+    q.resize(1).first() = Bforce(2)/scale;
+  }else NIY;
   return q;
 }
 
@@ -79,10 +109,10 @@ void rai::ForceExchange::kinPOA(arr& y, arr& J) const {
   if(type==FXT_poa){
     y = poa;
     if(!!J) for(uint i=0; i<3; i++) J.elem(i, qIndex+0+i) = 1.;
-  }else if(type==FXT_torque){
+  }else if(type==FXT_torque || type==FXT_force || type==FXT_forceZ){
     //use b as the POA!!
     b.C.kinematicsPos(y, J, &b);
-  }
+  }else NIY;
 }
 
 void rai::ForceExchange::kinForce(arr& y, arr& J) const {
@@ -91,21 +121,27 @@ void rai::ForceExchange::kinForce(arr& y, arr& J) const {
   if(type==FXT_poa){
     y = force;
     if(!!J) for(uint i=0; i<3; i++) J.elem(i, qIndex+3+i) = scale;
-  }else if(type==FXT_torque){
+  }else if(type==FXT_torque || type==FXT_force || type==FXT_force){
     y = force;
     if(!!J) for(uint i=0; i<3; i++) J.elem(i, qIndex+0+i) = scale;
-  }
+  }else if(type==FXT_forceZ){
+//    y = force;
+//    if(!!J) J.elem(2, qIndex) = scale;
+    b.C.kinematicsVec(y, J, &b, Vector_z);
+    y = force;
+    if(!!J) J *= scale;
+  }else NIY;
 }
 
 void rai::ForceExchange::kinTorque(arr& y, arr& J) const {
   a.C.kinematicsZero(y, J, 3);
 
-  if(type==FXT_poa){
+  if(type==FXT_poa || type==FXT_force || type==FXT_forceZ){
     //zero: POA is zero-momentum point
   }else if(type==FXT_torque){
     y = torque;
     if(!!J) for(uint i=0; i<3; i++) J.elem(i, qIndex+3+i) = scale;
-  }
+  }else NIY;
 }
 
 PairCollision* rai::ForceExchange::coll() {
@@ -132,10 +168,10 @@ arr gnuplot(const double x){
 
 void rai::ForceExchange::glDraw(OpenGL& gl) {
   if(type==FXT_poa){
-  }else if(type==FXT_torque){
+  }else if(type==FXT_torque || type==FXT_force){
     poa = b.getPosition();
   }
-  double scale = 1.;
+  double scale = 2.;
 
   arr _torque = torque;
   arr _force = force;
@@ -147,25 +183,26 @@ void rai::ForceExchange::glDraw(OpenGL& gl) {
 
 #ifdef RAI_GL
   glLoadIdentity();
+  glColor(1., 0., 1., 1.);
+  glDrawDiamond(poa(0), poa(1), poa(2), .02, .02, .02); //POA dimons
   glLineWidth(3.f);
-  glDrawDiamond(poa(0), poa(1), poa(2), .02, .02, .02);
   glBegin(GL_LINES);
   glColor(1., 0., 1., 1.);
   glVertex3dv(poa.p);
-  glVertex3dv((poa+scale*_torque).p);
+  glVertex3dv((poa+scale*_torque).p); //pink: torque
   glColor(1., 1., 1., 1.);
   glVertex3dv(poa.p);
-  glVertex3dv((poa+scale*_force).p);
+  glVertex3dv((poa+scale*_force).p); //white: force
   glEnd();
   glLineWidth(1.f);
 
-  glBegin(GL_LINES);
-  glVertex3dv(&a.ensure_X().pos.x);
-  glVertex3dv(poa.p);
-  glColor(.8, .5, .8, 1.);
-  glVertex3dv(poa.p);
-  glVertex3dv(&b.ensure_X().pos.x);
-  glEnd();
+//  glBegin(GL_LINES);
+//  glVertex3dv(&a.ensure_X().pos.x);
+//  glVertex3dv(poa.p);
+//  glColor(.8, .5, .8, 1.);
+//  glVertex3dv(poa.p);
+//  glVertex3dv(&b.ensure_X().pos.x);
+//  glEnd();
 
   glLoadIdentity();
 

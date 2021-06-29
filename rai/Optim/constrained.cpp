@@ -73,7 +73,11 @@ const char* MethodName[]= { "NoMethod", "SquaredPenalty", "AugmentedLagrangian",
 OptConstrained::OptConstrained(arr& _x, arr& _dual, MathematicalProgram& P, OptOptions _opt, std::ostream* _logFile)
   : L(P, _opt, _dual), newton(_x, L, _opt, _logFile), dual(_dual), opt(_opt), logFile(_logFile) {
 
-//  P.getBounds(newton.bound_lo, newton.bound_up);
+#if 0
+  arr lo, up;
+  P.getBounds(lo, up);
+  newton.setBounds(lo, up);
+#endif
 
   newton.options.verbose = rai::MAX(opt.verbose-1, 0);
 
@@ -87,6 +91,8 @@ OptConstrained::OptConstrained(arr& _x, arr& _dual, MathematicalProgram& P, OptO
 bool OptConstrained::step() {
   newton.logFile = logFile;
   L.logFile = logFile;
+
+  if(!newton.evals) newton.reinit(newton.x);
 
   if(opt.verbose>0) {
     cout <<"** optConstr. it=" <<its

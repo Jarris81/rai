@@ -12,6 +12,7 @@
 bool sanityCheck=false; //true;
 void updateBoundActive(intA& boundActive, const arr& x, const arr& bound_lo, const arr& bound_up);
 void boundClip(arr& y, const arr& bound_lo, const arr& bound_up);
+bool checkBound(arr& y, const arr& bound_lo, const arr& bound_up, double eps=1e-3);
 
 /** @brief Minimizes \f$f(x) = A(x)^T x A^T(x) - 2 a(x)^T x + c(x)\f$. The optional _user arguments specify,
  * if f has already been evaluated at x (another initial evaluation is then omitted
@@ -29,14 +30,17 @@ OptNewton::OptNewton(arr& _x, const ScalarFunction& _f,  OptOptions _o, ostream*
   x(_x), f(_f), options(_o), logFile(_logFile) {
   alpha = options.initStep;
   beta = options.damping;
-  if(f) reinit(_x);
+//  if(f) reinit(_x);
 }
 
 void OptNewton::reinit(const arr& _x) {
   if(&x!=&_x) x = _x;
 
-  boundClip(x, bounds_lo, bounds_up);
+//  boundClip(x, bounds_lo, bounds_up);
+  checkBound(x, bounds_lo, bounds_up);
+  timeEval -= rai::cpuTime();
   fx = f(gx, Hx, x);  evals++;
+  timeEval += rai::cpuTime();
 
   //startup verbose
   if(options.verbose>1) cout <<"*** optNewton: initial point f(x)=" <<fx <<" alpha=" <<alpha <<" beta=" <<beta <<endl;
@@ -66,7 +70,28 @@ void boundClip(arr& y, const arr& bound_lo, const arr& bound_up) {
 
 //===========================================================================
 
+bool checkBound(arr& y, const arr& bound_lo, const arr& bound_up, double eps){
+  bool good=true;
+  if(bound_lo.N && bound_up.N) {
+    double lo = min(y-bound_lo);
+    if(lo < -eps){
+      LOG(-1) << "lower bound violated: " <<lo;
+      good=false;
+    }
+    double up = max(y-bound_up);
+    if(up > eps){
+      LOG(-1) << "lower bound violated: " <<up;
+      good = false;
+    }
+  }
+  return good;
+}
+
+//===========================================================================
+
 OptNewton::StopCriterion OptNewton::step() {
+  if(!evals) reinit(x);
+
   double fy;
   arr y, gy, Hy, Delta;
 
@@ -75,7 +100,7 @@ OptNewton::StopCriterion OptNewton::step() {
 
   if(!(fx==fx)) HALT("you're calling a newton step with initial function value = NAN");
 
-  rai::timerRead(true);
+  timeNewton -= rai::cpuTime();
 
   //-- check active bounds, and decorrelate Hessian
   arr R=Hx;
@@ -172,9 +197,12 @@ OptNewton::StopCriterion OptNewton::step() {
 
   //restrict stepsize
   double maxDelta = absMax(Delta);
-  if(options.maxStep>0. && maxDelta>options.maxStep) {  Delta *= options.maxStep/maxDelta; maxDelta = options.maxStep; }
+  if(options.maxStep>0. && maxDelta>options.maxStep) {
+    Delta *= options.maxStep/maxDelta;
+    maxDelta = options.maxStep;
+  }
   double alphaHiLimit = options.maxStep/maxDelta;
-  double alphaLoLimit = 1e-1*options.stopTolerance/maxDelta;
+  //double alphaLoLimit = 1e-1*options.stopTolerance/maxDelta;
 
   if(options.verbose>1) cout <<"  |Delta|:" <<std::setw(11) <<maxDelta <<flush;
 
@@ -183,7 +211,8 @@ OptNewton::StopCriterion OptNewton::step() {
     if(options.verbose>1) cout <<" \t -- absMax(Delta)<1e-1*o.stopTolerance -- NO UPDATE" <<endl;
     return stopCriterion=stopDeltaConverge;
   }
-  timeNewton += rai::timerRead(true);
+
+  timeNewton += rai::cpuTime();
 
   //-- line search along Delta
   uint lineSearchSteps=0;
@@ -192,9 +221,9 @@ OptNewton::StopCriterion OptNewton::step() {
     if(alphaHiLimit>0. && alpha>alphaHiLimit) alpha=alphaHiLimit;
     y = x + alpha*Delta;
     boundClip(y, bounds_lo, bounds_up);
-    double timeBefore = rai::timerStart();
+    timeEval -= rai::cpuTime();
     fy = f(gy, Hy, y);  evals++;
-    timeEval += rai::timerRead(true, timeBefore);
+    timeEval += rai::cpuTime();
     if(options.verbose>5) cout <<"  probing y:" <<y;
     if(options.verbose>1) cout <<"  evals:" <<std::setw(4) <<evals <<"  alpha:" <<std::setw(11) <<alpha <<"  f(y):" <<fy <<flush;
     if(simpleLog) {
@@ -290,6 +319,19 @@ OptNewton::~OptNewton() {
 //  if(o.verbose>1) gnuplot("plot 'z.opt' us 1:3 w l", nullptr, true);
 #endif
   if(options.verbose>1) cout <<"--- optNewtonStop: f(x)=" <<fx <<endl;
+}
+
+OptNewton&OptNewton::setBounds(const arr& _bounds_lo, const arr& _bounds_up){
+  bounds_lo = _bounds_lo;
+  bounds_up = _bounds_up;
+  if(x.N){
+    CHECK_EQ(bounds_lo.N, x.N, "");
+    CHECK_EQ(bounds_up.N, x.N, "");
+    checkBound(x, bounds_lo, bounds_up);
+//    boundClip(x, bounds_lo, bounds_up);
+//    reinit(x);
+  }
+  return *this;
 }
 
 OptNewton::StopCriterion OptNewton::run(uint maxIt) {

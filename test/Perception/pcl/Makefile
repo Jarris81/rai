@@ -1,6 +1,8 @@
 BASE = ../../..
 
-DEPEND = Core Logic
-#OPTIM=fast_debug
+DEPEND = Core Geo Perception Gui
+
+PCL = 1
 
 include $(BASE)/build/generic.mk
+

@@ -6,3 +6,6 @@
     Please see <root-path>/LICENSE for details.
     --------------------------------------------------------------  */
 
+#include "treeSearchDomain.h"
+
+std::shared_ptr<const rai::TreeSearchDomain::SAO> rai::NoHandle;

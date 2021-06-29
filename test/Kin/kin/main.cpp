@@ -155,7 +155,6 @@ void TEST(Graph){
 
 void TEST(QuaternionKinematics){
   rai::Configuration G("kinematicTestQuat.g");
-  G.orsDrawJoints=false;
 
   for(uint k=0;k<3;k++){
     rai::Quaternion target;
@@ -303,14 +302,14 @@ void TEST(Limits){
   arr x(n);
   for(uint k=0;k<10;k++){
     rndUniform(x,-2.,2.,false);
-    checkJacobian(F->vf(G),x,1e-4);
+    checkJacobian(F->vf2(F->getFrames(G)),x,1e-4);
     for(uint t=0;t<10;t++){
-      auto lim = F->eval(G);
+      auto lim = F->eval(F->getFrames(G));
       cout <<"y=" <<lim.y <<"  " <<flush;
 //      cout <<"J:" <<lim.J <<endl;
       for(uint i=0;i<lim.y.N;i++) if(lim.y(i)<0.) lim.y(i)=0.; //penalize only positive
       x -= 1. * pseudoInverse(lim.J) * lim.y;
-      checkJacobian(F->vf(G),x,1e-4);
+      checkJacobian(F->vf2(F->getFrames(G)),x,1e-4);
       G.setJointState(x);
       G.watch();
     }
@@ -331,7 +330,7 @@ void generateSequence(arr &X, uint T, uint n){
   rndUniform(P,-1.,1.,false); P[0]=0.; P[P.d0-1]=0.;
   
   //convert into a smooth spline (1/0.03 points per via point):
-  X = rai::Spline(T,P).eval();
+  X = rai::Spline().set(2,P, range(0.,1.,P.d0-1)).eval(range(0.,1.,T));
 }
 
 void TEST(PlayStateSequence){
@@ -343,6 +342,7 @@ void TEST(PlayStateSequence){
   for(uint t=0;t<X.d0;t++){
     C.setJointState(X[t]());
     C.watch(false, STRING("replay of a state sequence -- time " <<t));
+    rai::wait(.01);
   }
 }
 
@@ -404,7 +404,7 @@ void TEST(FollowRedundantSequence){
   rai::Frame *endeff = G.getFrame("arm7");
   G.kinematicsPos(y, NoArr, endeff, rel);
   for(t=0;t<T;t++) Z[t]() += y; //adjust coordinates to be inside the arm range
-  plot->Line(Z);
+  plot()->Line(Z);
   G.gl()->add(plot()());
   G.watch(false);
   //-- follow the trajectory kinematically
@@ -419,6 +419,7 @@ void TEST(FollowRedundantSequence){
 //    cout <<J * invJ <<endl <<x <<endl <<"tracking error = " <<maxDiff(Z[t],y) <<endl;
     G.watch(false, STRING("follow redundant trajectory -- time " <<t));
     //G.gl()->timedupdate(.01);
+    rai::wait(.01);
   }
 }
 
@@ -650,7 +651,7 @@ int MAIN(int argc,char **argv){
   testKinematicSpeed();
   testFollowRedundantSequence();
   testInverseKinematics();
-  testDynamics();
+  //testDynamics();
   testContacts();
   testLimits();
 #ifdef RAI_ODE

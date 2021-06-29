@@ -15,10 +15,6 @@
 #include <memory>
 #include <vector>
 
-//-- don't require previously defined iterators
-#define for_list(Type, it, X)     Type *it=nullptr; for(uint it##_COUNT=0;   it##_COUNT<X.N && ((it=X(it##_COUNT)) || true); it##_COUNT++)
-#define for_list_rev(Type, it, X) Type *it=nullptr; for(uint it##_COUNT=X.N; it##_COUNT--   && ((it=X(it##_COUNT)) || true); )
-
 #define ARR ARRAY<double> ///< write ARR(1., 4., 5., 7.) to generate a double-Array
 #define TUP ARRAY<uint> ///< write TUP(1, 2, 3) to generate a uint-Array
 
@@ -68,6 +64,8 @@ template<class T> bool greaterEqual(const T& a, const T& b) { return a>=b; }
 namespace rai {
 
 template<class T> struct ArrayIterationEnumerated;
+template<class T> struct ArrayIterationReverse;
+template<class T> struct ArrayModRaw;
 
 /** Simple array container to store arbitrary-dimensional arrays (tensors).
   Can buffer more memory than necessary for faster
@@ -120,7 +118,8 @@ template<class T> struct Array : /*std::vector<T>,*/ Serializable {
   typename vec_type::const_iterator begin() const { return typename vec_type::const_iterator(p); }
   typename vec_type::iterator end() { return typename vec_type::iterator(p+N); }
   typename vec_type::const_iterator end() const { return typename vec_type::const_iterator(p+N); }
-  ArrayIterationEnumerated<T> enumerated() { return ArrayIterationEnumerated<T>(*this); }
+  ArrayIterationEnumerated<T> itEnumerated() { return ArrayIterationEnumerated<T>(*this); }
+  ArrayIterationReverse<T> itReverse() { return ArrayIterationReverse<T>(*this); }
   //TODO: more: rows iterator, reverse iterator
 
   /// @name resizing
@@ -152,7 +151,7 @@ template<class T> struct Array : /*std::vector<T>,*/ Serializable {
 
   /// @name initializing/assigning entries
   rai::Array<T>& clear();
-  void setZero(byte zero=0);
+  rai::Array<T>& setZero(byte zero=0);
   void setUni(const T& scalar, int d=-1);
   void setId(int d=-1);
   void setDiag(const T& scalar, int d=-1);
@@ -313,6 +312,9 @@ template<class T> struct Array : /*std::vector<T>,*/ Serializable {
   const Array<T>& ioraw() const;
   const char* prt(); //gdb pretty print
 
+  /// modifiers
+  ArrayModRaw<T> modRaw() const;
+
   /// @name kind of private
   void resizeMEM(uint n, bool copy, int Mforce=-1);
   void reserveMEM(uint Mforce) { resizeMEM(N, true, Mforce); if(!nd) nd=1; }
@@ -336,6 +338,7 @@ template<class T> struct ArrayItEnumerated {
   T& operator()() { return *p; } //access to value by user
   void operator++() { p++; i++; }
   ArrayItEnumerated<T>& operator*() { return *this; } //in for(auto& it:array.enumerated())  it is assigned to *iterator
+  friend bool operator!=(const ArrayItEnumerated& i, const ArrayItEnumerated& j) { return i.p!=j.p; }
 };
 
 template<class T> struct ArrayIterationEnumerated {
@@ -347,7 +350,20 @@ template<class T> struct ArrayIterationEnumerated {
   //  const_iterator end() const { return p+N; }
 };
 
-template<class T> bool operator!=(const ArrayItEnumerated<T>& i, const ArrayItEnumerated<T>& j) { return i.p!=j.p; }
+template<class T> struct ArrayIterationReverse_It {
+  T* p;
+  T& operator*() { return *p; } //access to value by user
+  void operator++() { p--; }
+  friend bool operator!=(const ArrayIterationReverse_It& i, const ArrayIterationReverse_It& j) { return i.p!=j.p; }
+};
+
+template<class T> struct ArrayIterationReverse {
+  Array<T>& x;
+  ArrayIterationReverse(Array<T>& x):x(x) {}
+  ArrayIterationReverse_It<T> begin() { return {x.p+x.N-1}; }
+  ArrayIterationReverse_It<T> end() { return {x.p-1}; }
+};
+
 
 //===========================================================================
 /// @}
@@ -376,6 +392,14 @@ template<class T> bool operator!=(const Array<T>& v, const Array<T>& w);
 template<class T> bool operator<(const Array<T>& v, const Array<T>& w);
 template<class T> std::istream& operator>>(std::istream& is, Array<T>& x);
 //template<class T> std::ostream& operator<<(std::ostream& os, const Array<T>& x);
+
+template <class T> struct ArrayModRaw{
+  const Array<T> *x;
+  ArrayModRaw(const Array<T>* x) : x(x) {}
+  void write(std::ostream& os) const{ x->writeRaw(os); }
+};
+template <class T> ArrayModRaw<T> Array<T>::modRaw() const{ return ArrayModRaw<T>(this); }
+template <class T> std::ostream& operator<<(std::ostream& os, const ArrayModRaw<T>& x) { x.write(os); return os; }
 
 //element-wise update operators
 #ifndef SWIG
@@ -584,6 +608,9 @@ inline arr rand(uint n) { return rand(TUP(n)); }
 /// return array with uniform random numbers in [0, 1]
 inline arr rand(uint d0, uint d1) { return rand(TUP(d0, d1)); }
 
+/// return tensor of c's
+template<class T> const T& random(const rai::Array<T>& range) { return range.rndElem(); }
+
 /// return array with normal (Gaussian) random numbers
 arr randn(const uintA& d);
 /// return array with normal (Gaussian) random numbers
@@ -595,6 +622,9 @@ inline arr randn(uint d0, uint d1) { return randn(TUP(d0, d1)); }
 arr grid(const arr& lo, const arr& hi, const uintA& steps);
 /// return a grid (1D: range) split in 'steps' steps
 inline arr grid(uint dim, double lo, double hi, uint steps) { arr g;  g.setGrid(dim, lo, hi, steps);  return g; }
+/// return a 1D-grid
+inline arr range(double lo, double hi, uint steps) { arr g;  g.setGrid(1, lo, hi, steps);  g.reshape(-1);  return g; }
+
 
 arr repmat(const arr& A, uint m, uint n);
 
@@ -739,6 +769,7 @@ template<class T> T sum(const rai::Array<T>& v);
 template<class T> T scalar(const rai::Array<T>& v);
 template<class T> rai::Array<T> sum(const rai::Array<T>& v, uint d);
 template<class T> T sumOfAbs(const rai::Array<T>& v);
+template<class T> T sumOfPos(const rai::Array<T>& v);
 template<class T> T sumOfSqr(const rai::Array<T>& v);
 template<class T> T length(const rai::Array<T>& v);
 template<class T> T product(const rai::Array<T>& v);
@@ -901,7 +932,9 @@ struct SpecialArray {
   enum Type { ST_none, ST_NoArr, ST_EmptyShape, hasCarrayST, sparseVectorST, sparseMatrixST, diagST, RowShiftedST, CpointerST };
   Type type;
   SpecialArray(Type _type=ST_none) : type(_type) {}
+  SpecialArray(const SpecialArray&) = delete; //non-copyable
   virtual ~SpecialArray() {}
+  SpecialArray& operator=(const SpecialArray&) = delete; //non-copyable
 };
 
 namespace rai {
@@ -1008,10 +1041,12 @@ struct SparseMatrix : SpecialArray {
   arr B_A(const arr& B) const;
   void transpose();
   void rowWiseMult(const arr& a);
+  void rowWiseMult(const floatA& a);
   void add(const SparseMatrix& a, uint lo0=0, uint lo1=0, double coeff=1.);
   void add(const arr& B, uint lo0=0, uint lo1=0, double coeff=1.);
   arr unsparse();
   arr getTriplets() const;
+  void checkConsistency() const;
 };
 
 arr unpack(const arr& X);

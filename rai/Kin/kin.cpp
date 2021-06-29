@@ -61,6 +61,14 @@ uintA framesToIndices(const FrameL& frames) {
   return I;
 }
 
+StringA framesToNames(const FrameL& frames){
+  StringA names;
+  resizeAs(names, frames);
+  for(uint i=0; i<frames.N; i++) {
+    names.elem(i) = frames.elem(i)->name;
+  }
+  return names;
+}
 uintA jointsToIndices(const JointL& joints) {
   uintA I;
   resizeAs(I, joints);
@@ -139,13 +147,13 @@ void Configuration::copy(const Configuration& C, bool referenceSwiftOnCopy) {
   CHECK(this != &C, "never copy C onto itself");
 
   clear();
-  orsDrawProxies = C.orsDrawProxies;
   jacMode = C.jacMode;
 
   //copy frames; first each Frame/Link/Joint directly, where all links go to the origin K (!!!); then relink to itself
   for(Frame* f:C.frames) new Frame(*this, f);
-  for(Frame* f:C.frames) if(f->parent) frames.elem(f->ID)->linkFrom(frames.elem(f->parent->ID));
+  for(Frame* f:C.frames) if(f->parent) frames.elem(f->ID)->setParent(frames.elem(f->parent->ID));
 //  addFramesCopy(C.frames);
+  frames.reshapeAs(C.frames);
 
   //copy proxies; first they point to origin frames; afterwards, let them point to own frames
   copyProxies(C.proxies);
@@ -180,13 +188,14 @@ Frame* Configuration::addFrame(const char* name, const char* parent, const char*
     Frame* p = getFrame(parent);
     if(p) {
       f->set_X() = p->ensure_X();
-      f->linkFrom(p, true);
+      f->setParent(p, true);
     }
   }
 
   if(args && args[0]) {
-    String(args) >>f->ats;
-    f->read(f->ats);
+    if(!f->ats) f->ats = make_shared<Graph>();
+    String(args) >>*(f->ats);
+    f->read(*f->ats);
   }
 
 //  if(f->parent) f->calc_X_from_parent();
@@ -217,7 +226,7 @@ void Configuration::addAssimp(const char* filename) {
     if(A.parents(i).N){
       Frame* f = frames(Nold+i);
       rai::Frame *parent = getFrame(A.parents(i));
-      if(parent) f->linkFrom(parent);
+      if(parent) f->setParent(parent);
     }
     f->set_X() = A.poses(i);
   }
@@ -234,7 +243,7 @@ void Configuration::addAssimp(const char* filename) {
       for(auto& mesh:A.meshes(i)){
         if(mesh.V.N){
           Frame* f1 = addFrame(STRING(f->name<<'_' <<j++));
-          f1->linkFrom(f);
+          f1->setParent(f);
           f1->set_Q()->setZero();
           Shape* s = new Shape(*f1);
           s->type() = ST_mesh;
@@ -291,7 +300,7 @@ Frame* Configuration::addObject(const char* name, const char* parent, ShapeType 
 #endif
 
 /// add copies of all given frames and forces, which can be from another Configuration -> \ref frames array becomes sliced! (a matrix)
-void Configuration::addCopies(const FrameL& F, const ForceExchangeL& _forces) {
+Frame* Configuration::addCopies(const FrameL& F, const ForceExchangeL& _forces) {
   //prepare an index FId -> thisId
   uint maxId=0;
   for(Frame* f:F) if(f->ID>maxId) maxId=f->ID;
@@ -302,24 +311,25 @@ void Configuration::addCopies(const FrameL& F, const ForceExchangeL& _forces) {
   for(Frame* f:F) {
     Frame* f_new = new Frame(*this, f);
     FId2thisId(f->ID) = f_new->ID;
+
+    //convert constant joints to mimic joints
+    if(f->joint && f->ats && (*f->ats)["constant"]){
+      Frame *f_orig = getFrame(f_new->name); //identify by name!!!
+      if(f_orig!=f_new){
+        CHECK(f_orig->joint, "");
+        f_new->joint->setMimic(f_orig->joint);
+      }
+    }
   }
 
   //relink frames - special attention to mimic'ing
   for(Frame* f:F) if(f->parent && f->parent->ID<=maxId && FId2thisId(f->parent->ID)!=-1) {
     Frame* f_new = frames.elem(FId2thisId(f->ID));
-    f_new->linkFrom(frames.elem(FId2thisId(f->parent->ID)));
+    f_new->setParent(frames.elem(FId2thisId(f->parent->ID)));
     //take care of within-F mimic joints:
     if(f->joint && f->joint->mimic){
       CHECK(f->joint && f->joint->mimic, "");
-      f_new->joint->mimic = frames.elem(FId2thisId(f->joint->mimic->frame->ID))->joint;
-    }
-    //convert constant joints to mimic joints
-    if(f->joint && f->ats["constant"]){
-      Frame *f_orig = getFrame(f_new->name); //identify by name!!!
-      if(f_orig!=f_new){
-        CHECK(f_orig->joint, "");
-        f_new->joint->mimic = f_orig->joint;
-      }
+      f_new->joint->setMimic(frames.elem(FId2thisId(f->joint->mimic->frame->ID))->joint, true);
     }
   }
 
@@ -329,6 +339,14 @@ void Configuration::addCopies(const FrameL& F, const ForceExchangeL& _forces) {
   }
 
   if(!(frames.N%F.N)) frames.reshape(-1, F.N);
+
+  return frames.elem(FId2thisId(F.first()->ID));
+}
+
+/// same as addCopies() with C.frames and C.forces
+void Configuration::addConfiguration(const Configuration& C, double tau){
+  Frame* f=addCopies(C.frames, C.forces);
+  if(tau>=0.) f->tau=tau;
 }
 
 /// get first frame with given name
@@ -365,10 +383,11 @@ FrameL Configuration::getFrames(const StringA& names) const {
 /// calls getFrame() for all given names
 uintA Configuration::getFrameIDs(const StringA& names) const {
   if(!names.N) return uintA();
-  uintA I(names.N);
+  uintA I;
+  resizeAs(I, names);
   for(uint i=0; i<names.N; i++) {
-    Frame* f = getFrame(names(i));
-    if(!f) HALT("frame name '"<<names(i)<<"' doesn't exist");
+    Frame* f = getFrame(names.elem(i));
+    if(!f) HALT("frame name '"<<names.elem(i)<<"' doesn't exist");
     I.elem(i) = f->ID;
   }
   return I;
@@ -389,12 +408,21 @@ FrameL Configuration::getJointsSlice(uint t, bool activesOnly) const{
   return F;
 }
 
+FrameL Configuration::getJointsSlice(const FrameL& slice, bool activesOnly) const{
+  FrameL F;
+  for(auto* f:slice){
+    if((f->joint && (!activesOnly || f->joint->active))
+       || f->forces.N)  F.append(f);
+  }
+  return F;
+}
+
 /// get the frame IDs of all active joints
 uintA Configuration::getJointIDs() const {
   ((Configuration*)this)->ensure_indexedJoints();
   uintA joints(activeJoints.N);
   uint i=0;
-  for(Joint* j:activeJoints) joints(i++) = j->frame->ID;
+  for(Dof* j:activeJoints) joints(i++) = j->frame->ID;
   return joints;
 }
 
@@ -402,30 +430,26 @@ uintA Configuration::getJointIDs() const {
 StringA Configuration::getJointNames() const {
   ((Configuration*)this)->ensure_q();
   StringA names(getJointStateDimension());
-  for(Joint* j:activeJoints) {
+  for(Dof* j:activeJoints) {
     String name=j->frame->name;
     if(!name) name <<'q' <<j->qIndex;
     if(j->dim==1) names(j->qIndex) <<name;
     else for(uint i=0; i<j->dim; i++) names(j->qIndex+i) <<name <<':' <<i;
 
-    if(j->uncertainty) {
-      if(j->dim) {
-        for(uint i=j->dim; i<2*j->dim; i++) names(j->qIndex+i) <<name <<":UC:" <<i;
-      } else {
-        names(j->qIndex+1) <<name <<":UC";
-      }
-    }
+//    if(j->uncertainty) {
+//      if(j->dim) {
+//        for(uint i=j->dim; i<2*j->dim; i++) names(j->qIndex+i) <<name <<":UC:" <<i;
+//      } else {
+//        names(j->qIndex+1) <<name <<":UC";
+//      }
+//    }
   }
   return names;
 }
 
 /// get the names of all frames
 StringA Configuration::getFrameNames() const {
-  StringA names(frames.N);
-  for(uint i=0; i<frames.N; i++) {
-    names(i) = frames.elem(i)->name;
-  }
-  return names;
+  return framesToNames(frames);
 }
 
 /// get the (frame-ID, parent-ID) tuples and control scale for all active joints that represent controls
@@ -433,7 +457,7 @@ uintA Configuration::getCtrlFramesAndScale(arr& scale) const {
   uintA qFrames;
   for(rai::Frame* f : frames) {
     rai::Joint *j = f->joint;
-    if(j && j->active && j->dim>0 && (!j->mimic) && j->H>0. && j->type!=rai::JT_tau && (!f->ats["constant"])) {
+    if(j && j->active && j->dim>0 && (!j->mimic) && j->H>0. && j->type!=rai::JT_tau && (!f->ats || !(*f->ats)["constant"])) {
       qFrames.append(TUP(f->ID, f->parent->ID));
       if(!!scale) scale.append(j->H, j->dim);
     }
@@ -469,13 +493,13 @@ const arr& Configuration::getJointState() const {
 }
 
 /// get a q-vector for only a subset of joints (no force DOFs)
-arr Configuration::getJointState(const FrameL& joints, bool activesOnly) const {
+arr Configuration::getJointState(const FrameL& joints) const {
   ((Configuration*)this)->ensure_q();
   uint nd=0;
   for(Frame* f:joints) {
     Joint* j = f->joint;
     if(!j){ LOG(-1) <<"frame '" <<f->name <<"'[" <<f->ID <<"] is not a joint!"; continue; }
-    if(!j->active && activesOnly) HALT("frame '" <<f->name <<"' is a joint, but INACTIVE!");
+//    if(!j->active && activesOnly) HALT("frame '" <<f->name <<"' is a joint, but INACTIVE!");
     if(!j->mimic){
       nd += j->dim;
     }
@@ -489,9 +513,9 @@ arr Configuration::getJointState(const FrameL& joints, bool activesOnly) const {
     if(!j->mimic){
       if(j->active){
         for(uint ii=0; ii<j->dim; ii++) x(nd+ii) = q(j->qIndex+ii);
-      }else if(!activesOnly){
+      }else{
         for(uint ii=0; ii<j->dim; ii++) x(nd+ii) = qInactive(j->qIndex+ii);
-      }else HALT("");
+      }
       nd += j->dim;
     }
   }
@@ -508,7 +532,7 @@ arr Configuration::getFrameState(const FrameL& F) const {
   return X;
 }
 
-/// set the q-vector (all joint and forces DOFs)
+/// set the q-vector (all joint and force DOFs)
 void Configuration::setJointState(const arr& _q) {
   setJointStateCount++; //global counter
 
@@ -523,8 +547,8 @@ void Configuration::setJointState(const arr& _q) {
 
   _state_q_isGood=true;
   _state_proxies_isGood=false;
-  for(Joint* j:activeJoints) {
-    if(j->type!=JT_tau) {
+  for(Dof* j:activeJoints) {
+    if(j->joint() && j->joint()->type!=JT_tau) {
       j->frame->_state_setXBadinBranch();
     }
   }
@@ -532,36 +556,37 @@ void Configuration::setJointState(const arr& _q) {
 }
 
 /// set the DOFs (joints and forces) for the given subset of frames
-void Configuration::setJointState(const arr& _q, const FrameL& F, bool activesOnly) {
+void Configuration::setJointState(const arr& _q, const FrameL& F) {
   setJointStateCount++; //global counter
-  getJointState();
+  ensure_q();
 
   uint nd=0;
   for(Frame* f:F) {
     Joint* j = f->joint;
     if(!j && !f->forces.N) HALT("frame '" <<f->name <<"' is not a joint and has no forces!");
+    if(!j->mimic) CHECK_LE(nd+j->dim,_q.N, "given q-vector too small");
     if(!j) continue;
     if(j->active){
       if(!j->mimic){
         for(uint ii=0; ii<j->dim; ii++) q.elem(j->qIndex+ii) = _q(nd+ii);
       }
-      j->calc_Q_from_q(q, j->qIndex);
+      j->setDofs(q, j->qIndex);
     }else{
-      if(activesOnly) HALT("frame '" <<f->name <<"' is a joint, but INACTIVE!");
+//      if(activesOnly) HALT("frame '" <<f->name <<"' is a joint, but INACTIVE!");
       if(!j->mimic){
         for(uint ii=0; ii<j->dim; ii++) qInactive.elem(j->qIndex+ii) = _q(nd+ii);
       }
-      j->calc_Q_from_q(qInactive, j->qIndex);
+      j->setDofs(qInactive, j->qIndex);
     }
     if(!j->mimic) nd += j->dim;
   }
   for(Frame* f:F) {
     for(ForceExchange* c: f->forces) if(&c->a==f){
-      c->calc_F_from_q(q, c->qIndex);
-      nd += c->qDim();
+      c->setDofs(q, c->qIndex);
+      nd += c->getDimFromType();
     }
   }
-  CHECK_EQ(_q.N, nd, "");
+  CHECK_EQ(_q.N, nd, "given q-vector has wrong size");
 
   proxies.clear();
 
@@ -591,6 +616,15 @@ void Configuration::setTaus(double tau) {
   for(Frame* a:frames) a->tau = tau;
 }
 
+void Configuration::setActiveJoints(const DofL& joints){
+  for(rai::Frame *f:frames) if(f->joint) f->joint->active=false;
+  for(rai::Dof *j:joints) j->active=true;
+  reset_q();
+  activeJoints = joints;
+  calc_indexedActiveJoints(false);
+  checkConsistency();
+}
+
 /// selects only the joints of the given frames to be active -- the q-vector (and Jacobians) will refer only to those DOFs
 void Configuration::selectJoints(const FrameL& F, bool notThose) {
   for(Frame* f: frames) if(f->joint) f->joint->active = notThose;
@@ -605,15 +639,6 @@ void Configuration::selectJoints(const FrameL& F, bool notThose) {
 //  ensure_indexedJoints();
 //  ensure_q();
 //  checkConsistency();
-}
-
-/// select joint frames that have a given attribute in the g-file
-void Configuration::selectJointsByGroup(const StringA& groupNames, bool notThose) {
-  FrameL F;
-  for(Frame* f:frames) if(f->joint) {
-    for(const String& s:groupNames) if(f->ats[s]) { F.append(f); break; }
-  }
-  selectJoints(F, notThose);
 }
 
 /// select joint frames by name (names may refer to any part of a link, not necessarily the joint frame)
@@ -639,18 +664,30 @@ void Configuration::selectJointsBySubtrees(const FrameL& roots, bool notThose) {
   selectJoints(F, notThose);
 }
 
+/// select joint frames that have a given attribute in the gfile
+void Configuration::selectJointsByAtt(const StringA& attNames, bool notThose) {
+  FrameL F;
+  for(Frame* f:frames) if(f->joint) {
+    for(const String& s:attNames) if((*f->ats)[s]) { F.append(f); break; }
+  }
+  selectJoints(F, notThose);
+}
+
 /// returns diagonal of the metric in q-space determined by all joints' Joint::H
 arr Configuration::getCtrlMetric() const {
   arr H = zeros(getJointStateDimension());
-  for(Joint* j: activeJoints) {
-    double h=j->H;
-    //    CHECK(h>0.,"Hmetric should be larger than 0");
-    if(j->type==JT_transXYPhi) {
-      H(j->qIndex+0)=h*10.;
-      H(j->qIndex+1)=h*10.;
-      H(j->qIndex+2)=h;
-    } else {
-      for(uint k=0; k<j->qDim(); k++) H(j->qIndex+k)=h;
+  for(const Dof* dof:activeJoints) {
+    const Joint* j = dof->joint();
+    if(j){
+      double h=j->H;
+      //    CHECK(h>0.,"Hmetric should be larger than 0");
+      if(j->type==JT_transXYPhi) {
+        H(j->qIndex+0)=h*10.;
+        H(j->qIndex+1)=h*10.;
+        H(j->qIndex+2)=h;
+      } else {
+        for(uint k=0; k<j->dim; k++) H(j->qIndex+k)=h;
+      }
     }
   }
   return H;
@@ -676,8 +713,8 @@ arr Configuration::getNaturalCtrlMetric(double power) const {
   }
   if(!q.N) getJointStateDimension();
   arr Wdiag(q.N);
-  for(Joint* j: activeJoints) {
-    for(uint i=0; i<j->qDim(); i++) {
+  for(Dof* j:activeJoints) {
+    for(uint i=0; i<j->dim; i++) {
       Wdiag(j->qIndex+i) = ::pow(BM(j->frame->ID), power);
     }
   }
@@ -690,19 +727,18 @@ arr Configuration::getLimits() const {
   uint N=getJointStateDimension();
   arr limits(N, 2);
   limits.setZero();
-  for(Joint* j: activeJoints) {
-    uint i=j->qIndex;
-    uint d=j->qDim();
-    for(uint k=0; k<d; k++) { //in case joint has multiple dimensions
+  for(Dof* j:activeJoints) {
+    for(uint k=0; k<j->dim; k++) { //in case joint has multiple dimensions
       if(j->limits.N) {
-        limits(i+k, 0)=j->limits(2*k+0); //lo
-        limits(i+k, 1)=j->limits(2*k+1); //up
+        limits(j->qIndex+k, 0) = j->limits.elem(2*k+0); //lo
+        limits(j->qIndex+k, 1) = j->limits.elem(2*k+1); //up
       }
     }
   }
+#if 0
   for(ForceExchange* f: forces) {
     uint i=f->qIndex;
-    uint d=f->qDim();
+    uint d=f->getDimFromType();
     CHECK_EQ(d, 6, "");
     for(uint k=0; k<3; k++) {
       limits(i+k, 0)=-10.; //lo
@@ -713,6 +749,7 @@ arr Configuration::getLimits() const {
       limits(i+k, 1)=+1.; //up
     }
   }
+#endif
 //    cout <<"limits:" <<limits <<endl;
   return limits;
 }
@@ -880,7 +917,7 @@ void Configuration::flipFrames(Frame* a, Frame* b) {
   a->Q = -b->Q;
   b->Q.setZero();
   b->unLink();
-  a->linkFrom(b);
+  a->setParent(b);
 }
 
 void Configuration::pruneRigidJoints() {
@@ -953,7 +990,7 @@ void Configuration::makeObjectsFree(const StringA& objects, double H_cost) {
     Frame* a = getFrame(s, true);
     CHECK(a, "");
     a = a->getUpwardLink();
-    if(!a->parent) a->linkFrom(frames.first());
+    if(!a->parent) a->setParent(frames.first());
     if(!a->joint) new Joint(*a);
     a->joint->makeFree(H_cost);
   }
@@ -989,28 +1026,30 @@ bool Configuration::checkConsistency() const {
 
     //count dimensions yourself and check...
     uint myqdim = 0;
-    for(Joint* j: activeJoints) {
+    for(Dof* j:activeJoints) {
       if(j->mimic) {
         CHECK_EQ(j->qIndex, j->mimic->qIndex, "");
       } else {
         CHECK_EQ(j->qIndex, myqdim, "joint indexing is inconsistent");
-        if(!j->uncertainty)
-          myqdim += j->qDim();
-        else
-          myqdim += 2*j->qDim();
+//        if(!j->uncertainty)
+          myqdim += j->dim;
+//        else
+//          myqdim += 2*j->dim;
       }
     }
+#if 0
     for(ForceExchange* c: forces) {
-      CHECK_EQ(c->qDim(), 6, "");
+//      CHECK_EQ(c->qDim(), 6, "");
       CHECK_EQ(c->qIndex, myqdim, "joint indexing is inconsistent");
-      myqdim += c->qDim();
+      myqdim += c->getDimFromType();
     }
     CHECK_EQ(myqdim, q.N, "qdim is wrong");
+#endif
 
     //consistency with Q
     for(Frame* f : frames) if(f->joint){
       Joint *j = f->joint;
-      arr jq = j->calc_q_from_Q(f->Q);
+      arr jq = j->calcDofsFromConfig();
       CHECK_EQ(jq.N, j->dim, "");
       if(j->active){
         for(uint i=0; i<jq.N; i++) CHECK_ZERO(jq.elem(i) - q.elem(j->qIndex+i), 1e-6, "joint vector q and relative transform Q do not match for joint '" <<j->frame->name <<"', index " <<i);
@@ -1028,7 +1067,7 @@ bool Configuration::checkConsistency() const {
     if(a->joint) CHECK_EQ(a->joint->frame, a, "");
     if(a->shape) CHECK_EQ(&a->shape->frame, a, "");
     if(a->inertia) CHECK_EQ(&a->inertia->frame, a, "");
-    a->ats.checkConsistency();
+    if(a->ats) a->ats->checkConsistency();
 
     a->Q.checkNan();
     a->X.checkNan();
@@ -1064,6 +1103,10 @@ bool Configuration::checkConsistency() const {
         CHECK(frames.contains(j->mimic->frame), "mimic points to a frame outside this kinematic configuration");
       } else {
       }
+
+      for(Joint* m:j->mimicers) {
+        CHECK_EQ(m->mimic, j, "");
+      }
     }
 
   //check topsort
@@ -1081,7 +1124,7 @@ bool Configuration::checkConsistency() const {
   //check active sets
   if(_state_indexedJoints_areGood) {
     boolA jointIsInActiveSet = consts<byte>(false, frames.N);
-    for(Joint* j: activeJoints) { CHECK(j->active, ""); jointIsInActiveSet.elem(j->frame->ID)=true; }
+    for(Dof* j: activeJoints) { CHECK(j->active, ""); jointIsInActiveSet.elem(j->frame->ID)=true; }
     if(q.nd) {
       for(Frame* f: frames) if(f->joint && f->joint->active && f->joint->type!=JT_rigid) CHECK(jointIsInActiveSet(f->ID), "");
     }
@@ -1106,7 +1149,7 @@ bool Configuration::checkConsistency() const {
 Joint* Configuration::attach(Frame* a, Frame* b) {
   b = b->getUpwardLink();
   if(b->parent) b->unLink();
-  b->linkFrom(a, true);
+  b->setParent(a, true);
   return new Joint(*b, JT_rigid);
 }
 
@@ -1189,42 +1232,67 @@ uintA Configuration::getCollisionExcludePairIDs(bool verbose) {
   return ex;
 }
 
+FrameL Configuration::getCollisionAllPairs(){
+  FrameL coll;
+
+  //shapes within a link
+  for(Frame* A:frames) if(A->shape) for(Frame* B:frames) if(B->shape){
+    if(A->ID>=B->ID) continue;
+    if(A->shape->canCollideWith(B)){ coll.append(A); coll.append(B); }
+  }
+
+  coll.reshape(-1,2);
+  return coll;
+}
+
 /// creates uniques names by prefixing the node-index-number to each name */
 void Configuration::prefixNames(bool clear) {
   if(!clear) for(Frame* a: frames) a->name=STRING('_' <<a->ID <<'_' <<a->name);
   else       for(Frame* a: frames) a->name.clear() <<a->ID;
 }
 
-void Configuration::calc_indexedActiveJoints() {
-  reset_q();
+void Configuration::calc_indexedActiveJoints(bool resetActiveJointSet) {
+  if(resetActiveJointSet){
+    reset_q();
 
-  //-- collect active joints
-  activeJoints.clear();
-  for(Frame* f:frames) if(f->joint && f->joint->active && f->joint->type!=JT_rigid)
-      activeJoints.append(f->joint);
+    //-- collect active dofs
+    activeJoints.clear();
+    for(Frame* f:frames){
+      if(f->joint && f->joint->active && f->joint->type!=JT_rigid){
+        activeJoints.append(f->joint);
+      }
+      for(rai::ForceExchange* fex:f->forces){
+        if(fex->frame==f && fex->active){
+          activeJoints.append(fex);
+        }
+      }
+    }
+  }else{
+    //we assume the activeJoints were set properly before!
+  }
 
   _state_indexedJoints_areGood=true;
 
   //-- count active DOFs
   uint qcount=0;
-  for(Joint* j: activeJoints) {
-    j->dim = j->getDimFromType();
+  for(Dof* j: activeJoints) {
     if(!j->mimic) {
       j->qIndex = qcount;
-      if(!j->uncertainty)
-        qcount += j->qDim();
-      else
-        qcount += 2*j->qDim();
+//      if(!j->uncertainty)
+        qcount += j->dim;
+//      else
+//        qcount += 2*j->dim;
     } else {
       CHECK(j->mimic->active, "active joint '" << j->frame->name <<"' mimics inactive joint '" <<j->mimic->frame->name <<"'");
       j->qIndex = j->mimic->qIndex;
     }
   }
+#if 0
   for(ForceExchange* c: forces) {
-    CHECK_EQ(c->qDim(), 6, "");
     c->qIndex = qcount;
     qcount += c->qDim();
   }
+#endif
 
   //-- resize q
   q.resize(qcount).setZero();
@@ -1237,9 +1305,9 @@ void Configuration::calc_indexedActiveJoints() {
     j->dim = j->getDimFromType();
     j->qIndex = qcount;
     if(!j->uncertainty)
-      qcount += j->qDim();
+      qcount += j->dim;
     else
-      qcount += 2*j->qDim();
+      qcount += 2*j->dim;
   }
 
   //-- resize qInactive
@@ -1247,50 +1315,54 @@ void Configuration::calc_indexedActiveJoints() {
 }
 
 
-void Configuration::calc_q_from_Q() {
+void Configuration::calcDofsFromConfig() {
   ensure_indexedJoints();
 
   q.setZero();
   qInactive.setZero();
 
   uint n=0;
-  //-- active joints (part of the DOFs)
-  for(Joint* j: activeJoints) {
+  //-- active dofs
+  for(Dof* j: activeJoints) {
     if(j->mimic) continue; //don't count dependent joints
     CHECK_EQ(j->qIndex, n, "joint indexing is inconsistent");
-    arr joint_q = j->calc_q_from_Q(j->frame->Q);
+    arr joint_q = j->calcDofsFromConfig();
     CHECK_EQ(joint_q.N, j->dim, "");
     if(!j->dim) continue; //nothing to do
     q.setVectorBlock(joint_q, j->qIndex);
     n += j->dim;
-    if(j->uncertainty) {
-      q.setVectorBlock(j->uncertainty->sigma, j->qIndex+j->dim);
-      n += j->dim;
-    }
+//    if(j->uncertainty) {
+//      q.setVectorBlock(j->uncertainty->sigma, j->qIndex+j->dim);
+//      n += j->dim;
+//    }
   }
 
+#if 0
   //-- forces (part of the DOFs)
   for(ForceExchange* c: forces) {
     CHECK_EQ(c->qIndex, n, "joint indexing is inconsistent");
-    arr contact_q = c->calc_q_from_F();
-    CHECK_EQ(contact_q.N, c->qDim(), "");
+    arr contact_q = c->calcDofsFromConfig();
+    CHECK_EQ(contact_q.N, c->getDimFromType(), "");
     q.setVectorBlock(contact_q, c->qIndex);
-    n += c->qDim();
+    n += c->getDimFromType();
   }
   CHECK_EQ(n, q.N, "");
+#endif
 
-  //-- inactive joints (not part of DOFs)
+  //-- inactive dofs
   n=0;
   for(Frame* f: frames) if(f->joint && !f->joint->active){ //this includes mimic'ing joints!
     Joint *j = f->joint;
     CHECK_EQ(j->qIndex, n, "joint indexing is inconsistent");
-    arr joint_q = j->calc_q_from_Q(f->Q);
+    arr joint_q = j->calcDofsFromConfig();
     CHECK_EQ(joint_q.N, j->dim, "");
     if(!f->joint->dim) continue; //nothing to do
     qInactive.setVectorBlock(joint_q, j->qIndex);
     n += j->dim;
   }
   CHECK_EQ(n, qInactive.N, "");
+
+  _state_q_isGood=true;
 }
 
 void Configuration::calc_Q_from_q() {
@@ -1298,22 +1370,24 @@ void Configuration::calc_Q_from_q() {
   CHECK(_state_indexedJoints_areGood, "");
 
   uint n=0;
-  for(Joint* j: activeJoints) {
+  for(Dof* j: activeJoints) {
     if(!j->mimic) CHECK_EQ(j->qIndex, n, "joint indexing is inconsistent");
-    j->calc_Q_from_q(q, j->qIndex);
+    j->setDofs(q, j->qIndex);
     if(!j->mimic) {
       n += j->dim;
-      if(j->uncertainty) {
-        j->uncertainty->sigma = q.sub(j->qIndex+j->dim, j->qIndex+2*j->dim-1);
-        n += j->dim;
-      }
+//      if(j->uncertainty) {
+//        j->uncertainty->sigma = q.sub(j->qIndex+j->dim, j->qIndex+2*j->dim-1);
+//        n += j->dim;
+//      }
     }
   }
+#if 0
   for(ForceExchange* c: forces) {
     CHECK_EQ(c->qIndex, n, "joint indexing is inconsistent");
-    c->calc_F_from_q(q, c->qIndex);
-    n += c->qDim();
+    c->setDofs(q, c->qIndex);
+    n += c->getDimFromType();
   }
+#endif
   CHECK_EQ(n, q.N, "");
 }
 
@@ -1377,6 +1451,7 @@ arr Configuration::calc_fwdPropagateVelocities(const arr& qdot) {
 
 /// returns the 'Jacobian' of a zero n-vector (initializes Jacobian to proper sparse/dense/rowShifted/noArr)
 void Configuration::jacobian_zero(arr& J, uint n) const {
+  if(!J) return;
   uint N=getJointStateDimension();
   if(jacMode==JM_dense) {
     J.resize(n, N).setZero();
@@ -1429,7 +1504,6 @@ void Configuration::jacobian_pos(arr& J, Frame* a, const Vector& pos_world) cons
           R *= j->scale;
           J.setMatrixBlock(R.sub(0, -1, 0, 1), 0, j_idx);
         } else if(j->type==JT_transXYPhi) {
-          if(j->mimic) NIY;
           arr R = j->X().rot.getArr();
           R *= j->scale;
           J.setMatrixBlock(R.sub(0, -1, 0, 1), 0, j_idx);
@@ -1439,7 +1513,6 @@ void Configuration::jacobian_pos(arr& J, Frame* a, const Vector& pos_world) cons
           J.elem(1, j_idx+2) += tmp.y;
           J.elem(2, j_idx+2) += tmp.z;
         } else if(j->type==JT_phiTransXY) {
-          if(j->mimic) NIY;
           Vector tmp = j->axis ^ (pos_world-j->X().pos);
           tmp *= j->scale;
           J.elem(0, j_idx) += tmp.x;
@@ -1450,7 +1523,6 @@ void Configuration::jacobian_pos(arr& J, Frame* a, const Vector& pos_world) cons
           J.setMatrixBlock(R.sub(0, -1, 0, 1), 0, j_idx+1);
         }
         if(j->type==JT_XBall) {
-          if(j->mimic) NIY;
           arr R = conv_vec2arr(j->X().rot.getX());
           R *= j->scale;
           R.reshape(3, 1);
@@ -1612,13 +1684,14 @@ void Configuration::kinematicsQuat(arr& y, arr& J, Frame* a) const { //TODO: all
 void Configuration::kinematicsTau(double& tau, arr& J, Frame* a) const {
   if(!a) a=frames.first();
   else a = a->getRoot();
-  CHECK(a && a->joint && a->joint->type==JT_tau, "this configuration does not have a tau DOF");
 
-  Joint* j = a->joint;
   tau = a->tau;
   if(!!J) {
     jacobian_zero(J, 1);
-    J.elem(0, j->qIndex) += 1e-1;
+    if(a && a->joint && a->joint->type==JT_tau){
+      //    CHECK(a && a->joint && a->joint->type==JT_tau, "this configuration does not have a tau DOF");
+      J.elem(0, a->joint->qIndex) += 1e-1;
+    }
   }
 }
 
@@ -1819,7 +1892,7 @@ bool Configuration::hasView(){
 }
 
 int Configuration::watch(bool pause, const char* txt) {
-//  gl()->pressedkey=0;
+//  gl()->resetPressedKey();
   int key = gl()->setConfiguration(*this, txt, pause);
 //  if(pause) {
 //    if(!txt) txt="Config::watch";
@@ -2101,8 +2174,8 @@ void Configuration::writeURDF(std::ostream& os, const char* robotName) const {
         case ST_box:       os <<"      <box size=\"" <<size({0, 2}) <<"\" />\n";  break;
         case ST_cylinder:  os <<"      <cylinder length=\"" <<size.elem(-2) <<"\" radius=\"" <<size.elem(-1) <<"\" />\n";  break;
         case ST_sphere:    os <<"      <sphere radius=\"" <<size.last() <<"\" />\n";  break;
-        case ST_mesh:      os <<"      <mesh filename=\"" <<a->ats.get<FileToken>("mesh").name <<'"';
-          if(a->ats["meshscale"]) os <<" scale=\"" <<a->ats.get<arr>("meshscale") <<'"';
+        case ST_mesh:      os <<"      <mesh filename=\"" <<a->ats->get<FileToken>("mesh").name <<'"';
+          if((*a->ats)["meshscale"]) os <<" scale=\"" <<a->ats->get<arr>("meshscale") <<'"';
           os <<" />\n";  break;
         default:           os <<"      <UNKNOWN_" <<a->shape->type() <<" />\n";  break;
       }
@@ -2128,8 +2201,8 @@ void Configuration::writeURDF(std::ostream& os, const char* robotName) const {
             case ST_box:       os <<"      <box size=\"" <<size({0, 2}) <<"\" />\n";  break;
             case ST_cylinder:  os <<"      <cylinder length=\"" <<size.elem(-2) <<"\" radius=\"" <<size.elem(-1) <<"\" />\n";  break;
             case ST_sphere:    os <<"      <sphere radius=\"" <<size.last() <<"\" />\n";  break;
-            case ST_mesh:      os <<"      <mesh filename=\"" <<b->ats.get<FileToken>("mesh").name <<'"';
-              if(b->ats["meshscale"]) os <<" scale=\"" <<b->ats.get<arr>("meshscale") <<'"';
+            case ST_mesh:      os <<"      <mesh filename=\"" <<b->ats->get<FileToken>("mesh").name <<'"';
+              if((*b->ats)["meshscale"]) os <<" scale=\"" <<b->ats->get<arr>("meshscale") <<'"';
               os <<" />\n";  break;
             default:           os <<"      <UNKNOWN_" <<b->shape->type() <<" />\n";  break;
           }
@@ -2252,7 +2325,7 @@ void Configuration::writeMeshes(const char* pathPrefix) const {
       if(f->shape->type()==ST_ssCvx) f->shape->sscCore().writeArr(FILE(filename));
 #else
       filename <<f->name <<".ply";
-      f->ats.getNew<FileToken>("mesh").name = filename;
+      f->ats->getNew<FileToken>("mesh").name = filename;
       if(f->shape->type()==ST_mesh) f->shape->mesh().writePLY(filename.p);
       if(f->shape->type()==ST_ssCvx) f->shape->sscCore().writePLY(filename.p);
 #endif
@@ -2352,11 +2425,11 @@ void Configuration::displayDot() {
 void Configuration::report(std::ostream& os) const {
   uint nShapes=0, nUc=0;
   for(Frame* f:frames) if(f->shape) nShapes++;
-  for(Joint* j:activeJoints) if(j->uncertainty) nUc++;
+//  for(Dof* j:activeJoints) if(j->uncertainty) nUc++;
 
   os <<"Config: q.N=" <<getJointStateDimension()
      <<" #frames=" <<frames.N
-     <<" #joints=" <<activeJoints.N
+     <<" #dofs=" <<activeJoints.N
      <<" #shapes=" <<nShapes
      <<" #ucertainties=" <<nUc
      <<" #proxies=" <<proxies.N
@@ -2384,10 +2457,12 @@ void Configuration::readFromGraph(const Graph& G, bool addInsteadOfClear) {
     Frame* b=new Frame(*this);
     node2frame(n->index) = b;
     b->name=n->key;
-    b->ats.copy(n->graph(), false, true);
-    b->read(b->ats);
+    b->ats = make_shared<Graph>();
+    b->ats->copy(n->graph(), false, true);
+    b->read(*b->ats);
   }
 
+  //-- normal case! just normal frames or edges
   for(Node* n: G) {
     CHECK(n->isGraph(), "frame must have value Graph");
     if(n->graph().findNode("%body") || n->graph().findNode("%shape") || n->graph().findNode("%joint")
@@ -2403,8 +2478,9 @@ void Configuration::readFromGraph(const Graph& G, bool addInsteadOfClear) {
       else HALT("a frame can only have one parent");
       node2frame(n->index) = b;
       b->name=n->key;
-      b->ats.copy(n->graph(), false, true);
-      b->read(b->ats);
+      b->ats = make_shared<Graph>();
+      b->ats->copy(n->graph(), false, true);
+      b->read(*b->ats);
 
     } else { //this is an inserted joint -> 2 frames (pre-joint and joint)
 
@@ -2412,8 +2488,9 @@ void Configuration::readFromGraph(const Graph& G, bool addInsteadOfClear) {
       Frame* to   = node2frame(n->parents(1)->index);
       CHECK(from, "JOINT: from '" <<n->parents(0)->key <<"' does not exist ["<<*n <<"]");
       CHECK(to, "JOINT: to '" <<n->parents(1)->key <<"' does not exist ["<<*n <<"]");
+      CHECK(!from->isChildOf(to, INT32_MAX), "you can't insert joint in loops!");
 
-      //generate a pre node
+      //generate a pre node?
       Frame* pre = from;
       if(n->graph().findNode("A")) {
         pre = new Frame(from);
@@ -2424,22 +2501,22 @@ void Configuration::readFromGraph(const Graph& G, bool addInsteadOfClear) {
         n->graph().index();
       }
 
-      //generate a frame, as below
+      //generate a new 'between' frame
       Frame* b = new Frame(pre);
       node2frame(n->index) = b;
       b->name=n->key;
 
-      //connect the post node and impose the post node relative transform
-      to->linkFrom(b, false);
+      //connect the new frame and optionally impose the post node relative transform
+      to->setParent(b, false);
       if(n->graph().findNode("B")) {
         to->set_Q()->read(n->graph().get<String>("B"));
         n->graph().delNode(n->graph().findNode("B"));
         n->graph().index();
       }
 
-      b->ats.copy(n->graph(), false, true);
-      b->read(b->ats);
-
+      b->ats = make_shared<Graph>();
+      b->ats->copy(n->graph(), false, true);
+      b->read(*b->ats);
     }
   }
 
@@ -2452,15 +2529,16 @@ void Configuration::readFromGraph(const Graph& G, bool addInsteadOfClear) {
 
     Frame* f = new Frame(*this);
     f->name=n->key;
-    f->ats.copy(n->graph(), false, true);
+    f->ats = make_shared<Graph>();
+    f->ats->copy(n->graph(), false, true);
     Shape* s = new Shape(*f);
-    s->read(f->ats);
+    s->read(*f->ats);
 
     if(n->parents.N==1) {
       Frame* b = listFindByName(frames, n->parents(0)->key);
       CHECK(b, "could not find frame '" <<n->parents(0)->key <<"'");
-      f->linkFrom(b);
-      if(f->ats["rel"]) n->graph().get(f->Q, "rel");
+      f->setParent(b);
+      if((*f->ats)["rel"]) f->ats->get(f->Q, "rel");
     }
   }
 
@@ -2482,20 +2560,21 @@ void Configuration::readFromGraph(const Graph& G, bool addInsteadOfClear) {
     } else {
       f->name <<'|' <<to->name; //the joint frame is actually the link frame of all child frames
     }
-    f->ats.copy(n->graph(), false, true);
+    f->ats = make_shared<Graph>();
+    f->ats->copy(n->graph(), false, true);
 
-    f->linkFrom(from);
-    to->linkFrom(f);
+    f->setParent(from);
+    to->setParent(f);
 
     Joint* j=new Joint(*f);
-    j->read(f->ats);
+    j->read(*f->ats);
   }
 
   //if the joint is coupled to another:
   {
     Joint* j;
     for(Frame* f: frames) if((j=f->joint) && j->mimic==(Joint*)1) {
-        Node* mim = f->ats["mimic"];
+        Node* mim = (*f->ats)["mimic"];
         String jointName;
         if(mim->isOfType<String>()) jointName = mim->get<String>();
         else if(mim->isOfType<NodeL>()) {
@@ -2506,14 +2585,15 @@ void Configuration::readFromGraph(const Graph& G, bool addInsteadOfClear) {
         }
         Frame* mimicFrame = getFrame(jointName, true, true);
         CHECK(mimicFrame, "the argument to 'mimic', '" <<jointName <<"' is not a frame name");
-        j->mimic = mimicFrame->joint;
+        j->mimic=0; //UNDO the =(Joint*)1
+        j->setMimic( mimicFrame->joint );
         if(!j->mimic) HALT("The joint '" <<*j <<"' is declared mimicking '" <<jointName <<"' -- but that doesn't exist!");
         j->type = j->mimic->type;
         j->q0 = j->mimic->q0;
-        j->calc_Q_from_q(j->q0, 0);
+        j->setDofs(j->q0, 0);
 
         delete mim;
-        f->ats.index();
+        f->ats->index();
       }
   }
 
@@ -2619,7 +2699,12 @@ std::shared_ptr<Feature> Configuration::feature(FeatureSymbol fs, const StringA&
 
 /// evaluate a feature for a given frame(s)
 void Configuration::evalFeature(arr& y, arr& J, FeatureSymbol fs, const StringA& frames) const {
-  feature(fs, frames)->__phi(y, J, *this);
+  std::shared_ptr<Feature> feat = feature(fs, frames);
+  feat->eval(y, J, feat->getFrames(*this));
+}
+
+Value Configuration::eval(FeatureSymbol fs, const StringA& frames){
+  return feature(fs,frames)->eval(getFrames(frames));
 }
 
 /// Compute the new configuration q such that body is located at ytarget (with deplacement rel).
@@ -2690,15 +2775,16 @@ const Proxy* Configuration::getContact(uint a, uint b) const {
 void Configuration::glDraw(OpenGL& gl) {
   glDraw_sub(gl, frames);
 
+#if 0
   bool displayUncertainties = false;
-  for(Joint* j:activeJoints) if(j->uncertainty) {
+  for(Dof* j:activeJoints) if(j->uncertainty) {
       displayUncertainties=true; break;
     }
 
   if(displayUncertainties) {
     arr q_org = getJointState();
-    for(Joint* j:activeJoints) if(j->uncertainty) {
-        for(uint i=0; i<j->qDim(); i++) {
+    for(Dof* j:activeJoints) if(j->uncertainty) {
+        for(uint i=0; i<j->dim; i++) {
           arr q=q_org;
           q(j->qIndex+i) -= j->uncertainty->sigma(i);
           setJointState(q);
@@ -2711,6 +2797,7 @@ void Configuration::glDraw(OpenGL& gl) {
       }
     setJointState(q_org);
   }
+#endif
 }
 
 /// GL routine to draw a Configuration
@@ -2724,8 +2811,9 @@ void Configuration::glDraw_sub(OpenGL& gl, const FrameL& F, int drawOpaqueOrTran
   glColor(.5, .5, .5);
 
   if(drawOpaqueOrTransparanet!=2) {
-    if(orsDrawVisualsOnly) {
-      orsDrawProxies=orsDrawJoints=orsDrawMarkers=false;
+    if(gl.drawOptions.drawVisualsOnly) {
+      gl.drawOptions.drawProxies=gl.drawOptions.drawJoints=false;
+      drawOpaqueOrTransparanet=1;
     }
 
     //proxies
@@ -2739,7 +2827,7 @@ void Configuration::glDraw_sub(OpenGL& gl, const FrameL& F, int drawOpaqueOrTran
 
     //joints
     Joint* e;
-    if(orsDrawJoints) for(Frame* fr: F) if((e=fr->joint)) {
+    if(gl.drawOptions.drawJoints) for(Frame* fr: F) if((e=fr->joint)) {
           //set name (for OpenGL selection)
           glPushName((fr->ID <<2) | 2);
 
@@ -2785,19 +2873,20 @@ void Configuration::glDraw_sub(OpenGL& gl, const FrameL& F, int drawOpaqueOrTran
   }
 
   //shapes
-  if(orsDrawBodies) {
-    if(drawOpaqueOrTransparanet==0 || drawOpaqueOrTransparanet==1) {
-      //first non-transparent
-      for(Frame* f: F) if(f->shape && f->shape->alpha()==1.) {
-          gl.drawId(f->ID);
-          f->shape->glDraw(gl);
-        }
+  if(drawOpaqueOrTransparanet==0 || drawOpaqueOrTransparanet==1) {
+    //first non-transparent
+    for(Frame* f: F) if(f->shape && f->shape->alpha()==1.) {
+      if(F.nd==2 && f->ID>F.d1 && f->shape->_mesh==F.elem(f->ID-F.d1)->shape->_mesh && f->X==F.elem(f->ID-F.d1)->X){//has the same shape and pose as previous time slice frame
+        continue;
+      }
+      gl.drawId(f->ID);
+      f->shape->glDraw(gl);
     }
-    if(drawOpaqueOrTransparanet==0 || drawOpaqueOrTransparanet==2) {
-      for(Frame* f: F) if(f->shape && f->shape->alpha()<1.) {
-          gl.drawId(f->ID);
-          f->shape->glDraw(gl);
-        }
+  }
+  if(drawOpaqueOrTransparanet==0 || drawOpaqueOrTransparanet==2) {
+    for(Frame* f: F) if(f->shape && f->shape->alpha()<1.) {
+      gl.drawId(f->ID);
+      f->shape->glDraw(gl);
     }
   }
 
@@ -3082,7 +3171,7 @@ int animateConfiguration(Configuration& C, Inotify* ino) {
       C.setJointState(x);
       int key = C.watch(false, STRING("DOF = " <<i <<" : " <<jointNames(i) <<lim[i]));
 
-      if(key==13 || key==32 || key==27 || key=='q') {
+      if(key==13 || key==27 || key=='q') {
         C.setJointState(x0);
         return key;
       }
@@ -3171,59 +3260,59 @@ EditConfigurationHoverCall::EditConfigurationHoverCall(Configuration& _ors) {
 }
 
 struct EditConfigurationKeyCall:OpenGL::GLKeyCall {
-  Configuration& K;
+  Configuration& C;
   bool& exit;
-  EditConfigurationKeyCall(Configuration& _K, bool& _exit): K(_K), exit(_exit) {}
+  EditConfigurationKeyCall(Configuration& _C, bool& _exit): C(_C), exit(_exit) {}
   bool keyCallback(OpenGL& gl) {
-    if(false && gl.pressedkey==' ') { //grab a body
-      if(movingBody) { movingBody=nullptr; return true; }
-      Joint* j=nullptr;
-      Frame* s=nullptr;
-      gl.Select();
-      OpenGL::GLSelect* top=gl.topSelection;
-      if(!top) { cout <<"No object below mouse!" <<endl;  return false; }
-      uint i=top->name;
-      //cout <<"HOVER call: id = 0x" <<std::hex <<gl.topSelection->name <<endl;
-      if((i&3)==1) s=K.frames.elem(i>>2);
-      if((i&3)==2) j=K.frames.elem(i>>2)->joint;
-      if(s) {
-        cout <<"selected shape " <<s->name <<" of body " <<s->name <<endl;
-        selx=top->x;
-        sely=top->y;
-        selz=top->z;
-        seld=top->dmin;
-        cout <<"x=" <<selx <<" y=" <<sely <<" z=" <<selz <<" d=" <<seld <<endl;
-        selpos = s->ensure_X().pos;
-        movingBody=s;
+    if(gl.pressedkey==' ') { //grab a body
+      gl.drawOptions.drawMode_idColor=true;
+      gl.beginNonThreadedDraw(true);
+      gl.Draw(gl.width, gl.height, 0, true);
+      gl.endNonThreadedDraw(true);
+      gl.drawOptions.drawMode_idColor=false;
+      write_ppm(gl.captureImage,"z.ppm");
+      uint id = color2id(&gl.captureImage(gl.mouseposy, gl.mouseposx, 0));
+      float d = gl.captureDepth(gl.mouseposy, gl.mouseposx);
+      arr x = {double(gl.mouseposx), double(gl.mouseposy), d};
+      if(d<.01 || d==1.) {
+        cout <<"NO SELECTION: SELECTION DEPTH = " <<d <<' ' <<gl.camera.glConvertToTrueDepth(d) <<endl;
+      } else {
+        gl.camera.unproject_fromPixelsAndGLDepth(x, gl.width, gl.height);
       }
-      if(j) {
-        cout <<"selected joint " <<j->frame->ID <<" connecting " <<j->from()->name <<"--" <<j->frame->name <<endl;
+      cout <<"SELECTION id: " <<id <<" world coords:" <<x <<endl;
+      if(id<C.frames.N) cout <<*C.frames.elem(id) <<endl;
+    } else if(gl.pressedkey=='c') { //compute collisions
+      C.ensure_proxies();
+      C.getTotalPenetration();
+      double eps=.1;
+      C.reportProxies(cout, eps, false);
+#if 0
+      FrameL collisionPairs = C.getCollisionAllPairs();
+//      cout <<" CollisionPairs:" <<endl;
+//      for(uint i=0;i<collisionPairs.d0;i++) cout <<collisionPairs(i,0)->name <<'-' <<collisionPairs(i,1)->name <<endl;
+      auto coll = F_PairCollision().eval(collisionPairs);
+      bool doesCollide=false;
+      for(uint i=0;i<coll.y.N;i++){
+        if(coll.y.elem(i)>-eps){
+          LOG(-1) <<"in collision: " <<collisionPairs(i,0)->name <<'-' <<collisionPairs(i,1)->name <<' ' <<coll.y.elem(i);
+          doesCollide=true;
+        }
       }
-      return true;
+#endif
     } else switch(gl.pressedkey) {
-        case '1':  K.orsDrawBodies^=1;  break;
-        case '2':  K.orsDrawShapes^=1;  break;
-        case '3':  K.orsDrawJoints^=1;  K.orsDrawMarkers^=1; break;
-        case '4':  K.orsDrawProxies^=1;  break;
+        case '1':  gl.drawOptions.drawShapes^=1;  break;
+        case '2':  gl.drawOptions.drawJoints^=1;  break;
+        case '3':  gl.drawOptions.drawProxies^=1;  break;
+        case '4':  gl.drawOptions.drawZlines^=1;  break;
         case '5':  gl.reportSelects^=1;  break;
         case '6':  gl.reportEvents^=1;  break;
-        case 'j':  gl.camera.X.pos += gl.camera.X.rot*Vector(0, 0, .1);  break;
-        case 'k':  gl.camera.X.pos -= gl.camera.X.rot*Vector(0, 0, .1);  break;
-        case 'i':  gl.camera.X.pos += gl.camera.X.rot*Vector(0, .1, 0);  break;
-        case ',':  gl.camera.X.pos -= gl.camera.X.rot*Vector(0, .1, 0);  break;
-        case 'l':  gl.camera.X.pos += gl.camera.X.rot*Vector(.1, .0, 0);  break;
-        case 'h':  gl.camera.X.pos -= gl.camera.X.rot*Vector(.1, 0, 0);  break;
-        case 'a':  gl.camera.focus(
-            (gl.camera.X.rot*(gl.camera.foc - gl.camera.X.pos)
-             ^ gl.camera.X.rot*Vector(1, 0, 0)) * .001
-            + gl.camera.foc);
-          break;
-        case 's':  gl.camera.X.pos +=
-            (
-              gl.camera.X.rot*(gl.camera.foc - gl.camera.X.pos)
-              ^(gl.camera.X.rot * Vector(1., 0, 0))
-            ) * .01;
-          break;
+        case '7':  gl.drawOptions.drawMode_idColor^=1;  break;
+        case 'o':  gl.camera.X.pos += gl.camera.X.rot*Vector(0, 0, .1);  break;
+        case 'u':  gl.camera.X.pos -= gl.camera.X.rot*Vector(0, 0, .1);  break;
+        case 'k':  gl.camera.X.pos += gl.camera.X.rot*Vector(0, .1, 0);  break;
+        case 'i':  gl.camera.X.pos -= gl.camera.X.rot*Vector(0, .1, 0);  break;
+        case 'j':  gl.camera.X.pos += gl.camera.X.rot*Vector(.1, 0, 0);  break; //right
+        case 'l':  gl.camera.X.pos -= gl.camera.X.rot*Vector(.1, 0, 0);  break; //left
         case 'q' :
           cout <<"EXITING" <<endl;
           exit=true;
@@ -3240,37 +3329,56 @@ void editConfiguration(const char* filename, Configuration& C) {
   //  gl.exitkeys="1234567890qhjklias, "; //TODO: move the key handling to the keyCall!
   bool exit=false;
   //  gl.addHoverCall(new EditConfigurationHoverCall(K));
-//  K.gl()->addKeyCall(new EditConfigurationKeyCall(K,exit));
-//  K.gl()->addClickCall(new EditConfigurationClickCall(K));
+  C.gl()->ensure_gl().addKeyCall(new EditConfigurationKeyCall(C,exit));
+  C.gl()->ensure_gl().addClickCall(new EditConfigurationClickCall(C));
   Inotify ino(filename);
   for(; !exit;) {
     cout <<"reloading `" <<filename <<"' ... " <<std::endl;
     Configuration C_tmp;
-    FileToken file(filename, true);
-    try {
-      lineCount=1;
-      Graph G(file);
-      G.checkConsistency();
-      C_tmp.readFromGraph(G);
-      C = C_tmp;
-      C.report();
-    } catch(std::runtime_error& err) {
-      cout <<"line " <<lineCount <<": " <<err.what() <<" -- please check the file and re-save" <<endl;
-      //      continue;
+    {
+      FileToken file(filename, true);
+      Graph G;
+      try {
+        lineCount=1;
+        G.read(file);
+        G.checkConsistency();
+      } catch(std::runtime_error& err) {
+        cout <<"g-File Synax Error line " <<lineCount <<": " <<err.what() <<" -- please check the file and re-save" <<endl;
+      }
+      try {
+        C_tmp.readFromGraph(G);
+        C = C_tmp;
+        C.report();
+      } catch(std::runtime_error& err) {
+        cout <<"Configuration initialization failed: " <<err.what() <<" -- please check the file and re-save" <<endl;
+      }
+      file.cd_start(); //important: also on crash - cd back to original
     }
-    file.cd_start(); //important: also on crash - cd back to original
     cout <<"watching..." <<endl;
     int key = -1;
     C.gl()->recopyMeshes(C);
     C.gl()->resetPressedKey();
     for(;;) {
-      key = C.gl()->setConfiguration(C, "waiting for file change", false);
-      if(key==13 || key==32 || key==27 || key=='q') break;
+      key = C.gl()->setConfiguration(C, "waiting for file change ('h' for help)", false);
+      if(key==13 || key==27 || key=='q') break;
+      if(key=='h'){
+        C.watch(true, "HELP:\n"
+                      "RIGHT CLICK - set focus point (move view and set center of rotation)\n"
+                      "LEFT CLICK - rotate (ball; or around z at view rim)\n"
+                      "q - quit\n"
+                      "[SPACE] - display object info\n"
+                      "SHIFT-LEFT CLICK - move view\n"
+                      "CTRL-LEFT CLICK - show object ID\n"
+                      "1..7 - view options\n"
+                      "jkluio - keyboard move\n"
+                      "as - keyboard rotate\n"
+                      "h - help");
+      }
       if(ino.poll(false, true)) break;
       wait(.2);
     }
     if(exit) break;
-    if(key==13 || key==32) {
+    if(key==13) {
       cout <<"animating.." <<endl;
       //while(ino.pollForModification());
       key = animateConfiguration(C, &ino);

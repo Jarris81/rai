@@ -15,6 +15,7 @@
 #include "switch.h"
 #include "F_collisions.h"
 #include "../Gui/opengl.h"
+#include "../Algo/SplineCtrlFeed.h"
 
 namespace rai {
 
@@ -27,6 +28,8 @@ struct Simulation_self {
   std::shared_ptr<CameraView> cameraview;
   std::shared_ptr<BulletInterface> bullet;
   std::shared_ptr<PhysXInterface> physx;
+
+  SplineCtrlReference ref;
 
   void updateDisplayData(double _time, const Configuration& _C);
   void updateDisplayData(const byteA& _image, const floatA& _depth);
@@ -115,6 +118,7 @@ Simulation::Simulation(Configuration& _C, Simulation::SimulatorEngine _engine, i
   } else if(engine==_kinematic) {
     //nothing
   } else NIY;
+  self->ref.initialize(C.getJointState(), NoArr, time);
   if(verbose>0) self->display = make_shared<Simulation_DisplayThread>(C);
 }
 
@@ -143,6 +147,10 @@ void Simulation::step(const arr& u_control, double tau, ControlMode u_mode) {
     arr q = C.getJointState();
     q += tau * ucontrol;
     C.setJointState(q);
+  } else if(u_mode==_spline) {
+    arr q = C.getJointState();
+    self->ref.getReference(q, NoArr, NoArr, q, NoArr, time);
+    C.setJointState(q);
   } else NIY;
 
   //-- imps before physics
@@ -170,6 +178,12 @@ void Simulation::step(const arr& u_control, double tau, ControlMode u_mode) {
   if(verbose>0) self->updateDisplayData(time, C);
 }
 
+void Simulation::setMoveTo(const arr& x, double t, bool append){
+
+  if(append) self->ref.append(~x, {t}, time, true);
+  else self->ref.overrideSmooth(~x, {t}, time);
+}
+
 bool getFingersForGripper(rai::Frame*& gripper, rai::Frame*& fing1, rai::Frame*& fing2, rai::Configuration& C, const char* gripperFrameName) {
   gripper = C.getFrame(gripperFrameName);
   if(!gripper) {
@@ -177,21 +191,23 @@ bool getFingersForGripper(rai::Frame*& gripper, rai::Frame*& fing1, rai::Frame*&
     gripper=fing1=fing2=0;
     return false;
   }
-  gripper = gripper->getUpwardLink();
+  rai::Frame* handLink = gripper->getUpwardLink();
   //browse all children of the gripper and find by name
   FrameL F;
-  gripper->getSubtree(F);
+  handLink->getSubtree(F);
   for(rai::Frame* f:F){
-    if(f->name.endsWith("finger1")) fing1=f;
-    if(f->name.endsWith("finger2")) fing2=f;
+    if(f->name.endsWith("finger_joint1")) fing1=f;
+    if(f->name.endsWith("finger_joint2")) fing2=f;
   }
+#if 0
   fing1 = fing1->getUpwardLink();
   fing2 = fing2->getUpwardLink();
 
   CHECK(fing1->joint, "");
   CHECK(fing2->joint, "");
-  CHECK_EQ(fing1->joint->type, JT_rigid, ""); //grippers need to be rigid joints! (to not be part of the dynamic/control system)
-  CHECK_EQ(fing2->joint->type, JT_rigid, "");
+  CHECK(!fing1->joint->active || !fing1->joint->dim, ""); //grippers need to be rigid joints! (to not be part of the dynamic/control system)
+  CHECK(!fing2->joint->active || !fing2->joint->dim, "");
+#endif
 
   //requirement: two of the children of need to be the finger geometries
 //  fing1 = gripper->children(0); while(!fing1->shape && fing1->children.N) fing1 = fing1->children(0);
@@ -210,7 +226,8 @@ void Simulation::openGripper(const char* gripperFrameName, double width, double 
   }
 
   //check if an object is attached
-  rai::Frame* obj = gripper->children(-1);
+  rai::Frame* obj = 0;
+  if(gripper->children.N) obj = gripper->children(-1);
   if(!obj || !obj->joint || obj->joint->type != rai::JT_rigid) {
     if(verbose>1) {
       LOG(1) <<"gripper '" <<gripper->name <<"' does not hold an object";
@@ -320,11 +337,14 @@ const arr& Simulation::get_qDot() {
   return self->qdot;
 }
 
+double Simulation::getTimeToMove(){
+  return self->ref.getEndTime()-time;
+}
+
 double Simulation::getGripperWidth(const char* gripperFrameName) {
   rai::Frame* gripper, *fing1, *fing2;
   getFingersForGripper(gripper, fing1, fing2, C, gripperFrameName);
   if(!gripper) return -1.;
-  CHECK_EQ(fing1->joint->type, JT_rigid, "");
   return fing1->get_Q().pos.x;
 }
 
@@ -340,7 +360,7 @@ bool Simulation::getGripperIsClose(const char* gripperFrameName) {
   getFingersForGripper(gripper, fing1, fing2, C, gripperFrameName);
   if(!gripper) return -1.;
   double q = fing1->get_Q().pos.x;
-  if(q<=fing1->joint->limits(0)) return true;
+  if(q<=fing1->ats->get<arr>("limits")(0)) return true;
   return false;
 }
 
@@ -349,7 +369,7 @@ bool Simulation::getGripperIsOpen(const char* gripperFrameName) {
   getFingersForGripper(gripper, fing1, fing2, C, gripperFrameName);
   if(!gripper) return false;
   double q = fing1->get_Q().pos.x;
-  if(q>=fing1->joint->limits(1)) return true;
+  if(q>=fing1->ats->get<arr>("limits")(1)) return true;
   return false;
 }
 
@@ -507,7 +527,6 @@ Imp_CloseGripper::Imp_CloseGripper(Frame* _gripper, Frame* _fing1, Frame* _fing2
     coll2->setFrameIDs({finger2->ID, obj->ID});
   }
 
-  CHECK_EQ(fing1->joint->type, JT_rigid, "");
   q = fing1->get_Q().pos.x;
 }
 
@@ -522,24 +541,24 @@ void Imp_CloseGripper::modConfiguration(Simulation& S, double tau) {
 
   //-- actually close gripper until both distances are < .001
   q -= 1e-1*speed*tau;
-  fing1->set_Q()->pos.x = q;
-  fing2->set_Q()->pos.x = q;
+  fing1->set_Q()->pos.set(q, 0., 0.);
+  fing2->set_Q()->pos.set(q, 0., 0.);
 
-  if(q<fing1->joint->limits(0)) { //stop grasp by joint limits -> unsuccessful
+  if(q<fing1->ats->get<arr>("limits")(0)) { //stop grasp by joint limits -> unsuccessful
     if(S.verbose>1) {
       LOG(1) <<"terminating closing gripper (limit) - nothing grasped";
     }
     killMe = true;
   } else if(obj) {
     //      step({}, .01, _none);
-    auto d1 = coll1->eval(S.C);
-    auto d2 = coll2->eval(S.C);
+    auto d1 = coll1->eval(coll1->getFrames(S.C));
+    auto d2 = coll2->eval(coll2->getFrames(S.C));
     //  cout <<q <<" d1: " <<d1.y <<"d2: " <<d2.y <<endl;
     if(-d1.y(0)<1e-3 && -d2.y(0)<1e-3) { //stop grasp by contact
       //evaluate stability
       F_GraspOppose oppose;
       arr y;
-      oppose.__phi2(y, NoArr, {finger1, finger2, obj});
+      oppose.eval(y, NoArr, {finger1, finger2, obj});
 
       if(sumOfSqr(y) < 0.1) { //good enough -> success!
         // kinematically attach object to gripper
@@ -576,7 +595,6 @@ Imp_OpenGripper::Imp_OpenGripper(Frame* _gripper, Frame* _fing1, Frame* _fing2, 
   when = _beforePhysics;
   type = Simulation::_openGripper;
 
-  CHECK_EQ(fing1->joint->type, JT_rigid, "");
   q = fing1->get_Q().pos.x;
 }
 
@@ -589,9 +607,9 @@ void Imp_OpenGripper::modConfiguration(Simulation& S, double tau) {
 
   //-- actually open gripper until limit
   q += 1e-1*speed*tau;
-  fing1->set_Q()->pos.x = q;
-  fing2->set_Q()->pos.x = q;
-  if(q > fing1->joint->limits(1)) { //stop opening
+  fing1->set_Q()->pos.set(q, 0., 0.);
+  fing2->set_Q()->pos.set(q, 0., 0.);
+  if(q > fing1->ats->get<arr>("limits")(1)) { //stop opening
     if(S.verbose>1) {
       LOG(1) <<"terminating opening gripper " <<gripper->name;
     }

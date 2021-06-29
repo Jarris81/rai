@@ -22,16 +22,18 @@
 namespace rai {
 struct Configuration;
 struct Frame;
+struct Dof;
 struct Joint;
 struct Shape;
 struct Inertia;
 struct ForceExchange;
-enum JointType { JT_none=-1, JT_hingeX=0, JT_hingeY=1, JT_hingeZ=2, JT_transX=3, JT_transY=4, JT_transZ=5, JT_transXY=6, JT_trans3=7, JT_transXYPhi=8, JT_universal=9, JT_rigid=10, JT_quatBall=11, JT_phiTransXY=12, JT_XBall, JT_free, JT_tau };
+enum JointType { JT_none=0, JT_hingeX, JT_hingeY, JT_hingeZ, JT_transX, JT_transY, JT_transZ, JT_transXY, JT_trans3, JT_transXYPhi, JT_universal, JT_rigid, JT_quatBall, JT_phiTransXY, JT_XBall, JT_free, JT_tau };
 enum BodyType  { BT_none=-1, BT_dynamic=0, BT_kinematic, BT_static };
 }
 
 typedef rai::Array<rai::Frame*> FrameL;
 typedef rai::Array<rai::Joint*> JointL;
+typedef rai::Array<rai::Dof*> DofL;
 typedef rai::Array<rai::Shape*> ShapeL;
 
 extern rai::Frame& NoFrame;
@@ -87,7 +89,7 @@ struct Frame : NonCopyable {
 
  public:
   double tau=0.;             ///< frame's relative time transformation (could be thought as part of the transformation X in space-time)
-  Graph ats;                 ///< list of any-type attributes
+  std::shared_ptr<Graph> ats;                 ///< list of any-type attributes
 
   //attachments to the frame
   Joint* joint=nullptr;          ///< this frame is an articulated joint
@@ -95,7 +97,7 @@ struct Frame : NonCopyable {
   Inertia* inertia=nullptr;      ///< this frame has inertia (is a mass)
   Array<ForceExchange*> forces;  ///< this frame exchanges forces with other frames
 
-  Frame(Configuration& _K, const Frame* copyFrame=nullptr);
+  Frame(Configuration& _C, const Frame* copyFrame=nullptr);
   Frame(Frame* _parent);
   ~Frame();
 
@@ -114,7 +116,7 @@ struct Frame : NonCopyable {
   Frame* insertPreLink(const rai::Transformation& A=0);
   Frame* insertPostLink(const rai::Transformation& B=0);
   void unLink();
-  void linkFrom(Frame* _parent, bool adoptRelTransform=false);
+  Frame& setParent(Frame* _parent, bool adoptRelTransform=false);
 
   //structural information/retrieval
   bool isChildOf(const Frame* par, int order=1) const;
@@ -129,6 +131,7 @@ struct Frame : NonCopyable {
   const char* isPart();
 
   void prefixSubtree(const char* prefix);
+  void computeCompoundInertia();
 
   //I/O
   void read(const Graph& ats);
@@ -158,10 +161,10 @@ struct Frame : NonCopyable {
   arr getRotationMatrix() { return ensure_X().rot.getArr(); }
   arr getRelativePosition() const { return get_Q().pos.getArr(); }
   arr getRelativeQuaternion() const { return get_Q().rot.getArr(); }
-  arr getSize() ;
-  arr getMeshPoints();
-  uintA getMeshTriangles();
-  arr getMeshCorePoints();
+  arr getSize() const ;
+  arr getMeshPoints() const ;
+  uintA getMeshTriangles() const ;
+  arr getMeshCorePoints() const ;
   arr getJointState() const; ///< throws error if this frame is not also a joint
 
   friend struct Configuration;
@@ -175,24 +178,38 @@ stdOutPipe(Frame)
 
 //===========================================================================
 
+struct Dof {
+  Frame* frame=0;      ///< this is the frame that Joint articulates! I.e., the output frame
+  bool active=true;  ///< if false, this dof is not considered part of the configuration's q-vector
+  uint dim=UINT_MAX;
+  uint qIndex=UINT_MAX;
+  arr  limits;        ///< joint limits (lo, up, [maxvel, maxeffort])
+  Joint* mimic=0; ///< if non-nullptr, this joint's state is identical to another's
+
+  virtual ~Dof() {}
+  virtual void setDofs(const arr& q, uint n=0) = 0;
+  virtual arr calcDofsFromConfig() const = 0;
+  virtual String name() const = 0;
+
+  const Joint* joint() const;
+  const ForceExchange* fex() const;
+};
+
+//===========================================================================
+
 /// for a Frame with Joint-Link, the relative transformation 'Q' is articulated
-struct Joint : NonCopyable {
-  Frame* frame;      ///< this is the frame that Joint articulates! I.e., the output frame
+struct Joint : Dof, NonCopyable {
 
   // joint information
-  uint dim=UINT_MAX;
-  uint qIndex;
   byte generator;    ///< (7bits), h in Featherstone's code (indicates basis vectors of the Lie algebra, but including the middle quaternion w)
-  arr limits;        ///< joint limits (lo, up, [maxvel, maxeffort])
   arr q0;            ///< joint null position
   double H=1.;       ///< control cost scalar
   double scale=1.;   ///< scaling robot-q = scale * q-vector
 
-  Joint* mimic=nullptr; ///< if non-nullptr, this joint's state is identical to another's
+  JointL mimicers;      ///< list of mimicing joints
 
   Vector axis=0;          ///< joint axis (same as X.rot.getX() for standard hinge joints)
   Enum<JointType> type;   ///< joint type
-  bool active=true;  ///< if false, this joint is not considered part of the q-vector
 
   //attachments to the joint
   struct Uncertainty* uncertainty=nullptr;
@@ -205,16 +222,17 @@ struct Joint : NonCopyable {
   const Transformation& X() const; ///< the frame where the joint STARTS (i.e. parent->X)
   const Transformation& Q() const; ///< the transformation realized by this joint (i.e. from parent->X to frame->X)
   Frame* from() const { return frame->parent; }
+  virtual String name() const { return STRING(frame->name<<'.'<<frame->ID); }
 
-  uint qDim();
-  void calc_Q_from_q(const arr& q, uint n);
-  arr calc_q_from_Q(const Transformation& Q) const;
+  void setMimic(Joint* j, bool unsetPreviousMimic=false);
+  void setDofs(const arr& q, uint n=0);
+  arr calcDofsFromConfig() const;
   arr getScrewMatrix();
   uint getDimFromType() const;
   arr get_h() const;
 
   bool isPartBreak() {
-    return (type==JT_rigid || type==JT_free) && !mimic;
+    return (type==JT_rigid || type==JT_free); // && !mimic;
 //    return (dim!=1 && !mimic) || type==JT_tau;
   }
 
@@ -242,13 +260,13 @@ struct Inertia : NonCopyable {
   Matrix matrix=0;
   Enum<BodyType> type;
   Vector com=0;             ///< its center of mass
-//  Vector force=0, torque=0; ///< current forces applying on the body
 
   Inertia(Frame& f, rai::Inertia* copyInertia=nullptr);
   ~Inertia();
 
+  void setZero(){ mass=0; com=0; matrix=0; }
+  void add(const Inertia& I, const rai::Transformation& rel);
   void defaultInertiaByShape();
-  arr getFrameRelativeWrench();
 
   void write(std::ostream& os) const;
   void write(Graph& g);
@@ -279,16 +297,7 @@ struct Shape : NonCopyable, GLDrawer {
   Shape(Frame& f, const Shape* copyShape=nullptr); //new Shape, being added to graph and frame's shape lists
   virtual ~Shape();
 
-  bool canCollideWith(const Frame* f) const {
-    if(!cont) return false;
-    if(!f->shape || !f->shape->cont) return false;
-    Frame* a = frame.getUpwardLink();
-    Frame* b = f->getUpwardLink();
-    if(a==b) return false;
-    if(cont<0) if(a->isChildOf(b, -cont)) return false;
-    if(f->shape->cont<0)  if(b->isChildOf(a, -f->shape->cont)) return false;
-    return true;
-  }
+  bool canCollideWith(const Frame* f) const;
 
   void read(const Graph& ats);
   void write(std::ostream& os) const;
