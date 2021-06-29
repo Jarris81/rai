@@ -7,7 +7,7 @@
     --------------------------------------------------------------  */
 
 #include "CtrlSet.h"
-
+#include "CtrlSymCommand.h"
 #include "CtrlTargets.h"
 
 ptr<CtrlObjective> CtrlSet::addObjective(const ptr<Feature>& f, ObjectiveType type, double transientStep) {
@@ -24,6 +24,19 @@ ptr<CtrlObjective> CtrlSet::addObjective(const ptr<Feature>& f, ObjectiveType ty
 
 shared_ptr<CtrlObjective> CtrlSet::add_qControlObjective(uint order, double _scale, const rai::Configuration& C) {
   return addObjective(symbols2feature(FS_qControl, {}, C, {_scale}, NoArr, order), OT_sos);
+}
+
+void CtrlSet::addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate) {
+
+  //rai::Frame *gripper = Ctuple.getFrame(command.elem(2));
+  //rai::Frame *object = Ctuple.getFrame(command.elem(3));
+  shared_ptr<CtrlSymCommand> ptr;
+
+  ptr = make_shared<CtrlSymCommand>();
+  ptr->command = commandType;
+  ptr->isCondition=isImmediate;
+  ptr->frames=frames;
+  symbolicCommands.append(ptr);
 }
 
 void CtrlSet::report(std::ostream& os) const {
@@ -58,7 +71,20 @@ bool isFeasible(const CtrlSet& CS, const rai::Configuration& pathConfig, bool in
     }
     if(!isFeasible) break;
   }
+  //also check symbolic commands
+  for (const auto& sc : CS.symbolicCommands){
+    // if not converged, and is condition, set is not feasible
+    if(sc->isCondition && !sc->isConverged(pathConfig)) isFeasible = false;
+  }
   return isFeasible;
+}
+
+rai::Array<shared_ptr<CtrlObjective>> CtrlSet::getObjectives() {
+  return objectives;
+}
+
+rai::Array<shared_ptr<CtrlSymCommand>> CtrlSet::getSymbolicCommands() {
+  return symbolicCommands;
 }
 
 CtrlSet operator+(const CtrlSet& A, const CtrlSet& B){

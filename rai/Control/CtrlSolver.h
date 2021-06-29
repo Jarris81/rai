@@ -23,6 +23,7 @@ struct CtrlSolver : NonCopyable {
   rai::Graph optReport;
 
   rai::Array<shared_ptr<CtrlObjective>> objectives;    ///< list of objectives
+  rai::Array<shared_ptr<CtrlSymCommand>> symbolicCommands;
 
   CtrlSolver(const rai::Configuration& _C, double _tau, uint k_order=1);
   ~CtrlSolver();

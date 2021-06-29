@@ -10,6 +10,7 @@
 
 #include "CtrlObjective.h"
 #include "../Kin/feature.h"
+#include "CtrlSymCommand.h"
 
 
 //===========================================================================
@@ -17,11 +18,13 @@
 struct CtrlSet {
   rai::String name;
   rai::Array<shared_ptr<CtrlObjective>> objectives;    ///< list of objectives
-  rai::Array<StringA> symbolicCommands;
+  rai::Array<shared_ptr<CtrlSymCommand>> symbolicCommands; ///< list of symbolic commands
 
   CtrlSet(const char* _name=0) : name(_name) {}
   shared_ptr<CtrlObjective> addObjective(const ptr<Feature>& f, ObjectiveType type, double transientStep=-1.);
   shared_ptr<CtrlObjective> add_qControlObjective(uint order, double scale, const rai::Configuration& C);
+
+  void addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate);
 
   operator rai::Array<shared_ptr<CtrlObjective>>&(){ return objectives; }
 
@@ -29,6 +32,8 @@ struct CtrlSet {
 
   bool canBeInitiated(const rai::Configuration& pathConfig) const;
   bool isConverged(const rai::Configuration& pathConfig) const;
+  rai::Array<shared_ptr<CtrlObjective>> getObjectives();
+  rai::Array<shared_ptr<CtrlSymCommand>> getSymbolicCommands();
 };
 
 //===========================================================================

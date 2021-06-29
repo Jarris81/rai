@@ -23,6 +23,7 @@ CtrlSolver::~CtrlSolver(){
 
 void CtrlSolver::set(const CtrlSet& CS) {
   objectives = CS.objectives;
+  symbolicCommands = CS.symbolicCommands;
 }
 
 void CtrlSolver::addObjectives(const rai::Array<ptr<CtrlObjective>>& O) {
@@ -102,6 +103,10 @@ void CtrlSolver::update(const arr& q_real, const arr& qDot_real, rai::Configurat
         //callbacks
       }
     }
+  }
+  for(const auto& sc : symbolicCommands){
+    //we only care about run
+    if(!sc->isCondition) sc->run(C);
   }
 }
 
