@@ -87,9 +87,12 @@ using std::make_shared;
 namespace rai {
 extern int argc;
 extern char** argv;
+extern std::string initDir;
 extern bool IOraw;  ///< stream modifier for some classes (Mem in particular)
 extern uint lineCount;
 extern int verboseLevel;
+
+enum ArgWord { _left, _right, _sequence, _path };
 
 //----- execute a system command
 void system(const char* cmd);
@@ -183,6 +186,16 @@ template<class T> bool checkParameter(const char* tag);
 
 template<class T> void putParameter(const char* tag, const T& x);
 template<class T> bool getFromMap(T& x, const char* tag);
+
+template<class T> struct Parameter{
+  const char* name;
+  T value;
+  Parameter(const char* name) : name(name) { value = getParameter<T>(name); }
+  const T& operator()(){ return value; }
+};
+#define raiPARAM(type, name) \
+  rai::Parameter<type> name = {#name}; \
+  auto set_##name(type _##name){ name.value=_##name; return *this; }
 
 //----- get verbose level
 uint getVerboseLevel();
@@ -647,9 +660,15 @@ struct Singleton {
 //
 
 struct OpenGL;
+struct OpenGLDrawOptions{
+  bool drawWires=false;
+  bool drawColors=true;
+  bool drawMode_idColor=false;
+};
 struct GLDrawer {
   virtual void glDraw(OpenGL&) = 0;
   virtual ~GLDrawer() {}
+  static OpenGLDrawOptions& glDrawOptions(OpenGL&);
 };
 
 //===========================================================================

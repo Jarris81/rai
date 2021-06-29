@@ -1334,15 +1334,21 @@ struct Registry {
 
     rai::String cfgFileName="rai.cfg";
     if(registry["cfg"]) cfgFileName = registry.get<rai::String>("cfg");
-    LOG(3) <<"opening config file '" <<cfgFileName <<"'";
-    ifstream fil;
-    fil.open(cfgFileName);
-    if(fil.good()) {
-      fil >>registry;
-    } else {
-      LOG(3) <<" - failed";
-    }
+    std::string cwd = getcwd_string();
+    if(rai::initDir.length() && chdir(rai::initDir.c_str())){
+      LOG(-1) <<"can't open rai.cfg -- couldn't change to directory '" <<rai::initDir <<"'";
+    }else{
+      LOG(3) <<"opening config file '" <<cfgFileName <<"'";
+      ifstream fil;
+      fil.open(cfgFileName);
+      if(fil.good()) {
+        fil >>registry;
+      } else {
+        LOG(3) <<" - failed";
+      }
 
+      if(chdir(cwd.c_str())) HALT("couldn't change to directory '" <<cwd <<"'");
+    }
   }
   ~Registry() {
   }
@@ -1378,4 +1384,5 @@ rai::Graph& getRegistry(){ return registry()->registry; }
 RUN_ON_INIT_BEGIN(graph)
 rai::NodeL::memMove=true;
 rai::GraphEditCallbackL::memMove=true;
+rai::initDir = getcwd_string();
 RUN_ON_INIT_END(graph)

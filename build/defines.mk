@@ -87,7 +87,7 @@ LIBS += -lceres
 endif
 
 ifeq ($(NLOPT),1)
-DEPEND_UBUNTU += libnlopt-dev gfortran
+DEPEND_UBUNTU += libnlopt-cxx-dev gfortran
 CXXFLAGS += -DRAI_NLOPT `pkg-config --cflags nlopt`
 LIBS     += `pkg-config --libs nlopt`
 endif
@@ -96,6 +96,11 @@ ifeq ($(IPOPT),1)
 DEPEND_UBUNTU += coinor-libipopt-dev
 CXXFLAGS += -DRAI_IPOPT `pkg-config --cflags ipopt`
 LIBS     += `pkg-config --libs ipopt`
+endif
+
+ifeq ($(OMPL),1)
+CXXFLAGS += -DRAI_OMPL
+CPATHS  += /usr/local/include/ompl-1.6/
 endif
 
 ifeq ($(CUDA),1)
@@ -459,7 +464,7 @@ LIBS += -lpthread -lrt\
 -lSimulationController 
 endif
 
-ifeq ($(BULLET),1)
+ifeq ($(BULLET_LOCAL),1)
 #BULLET_PATH=$(HOME)/git/bullet3
 CXXFLAGS  += -DRAI_BULLET -DBT_USE_DOUBLE_PRECISION
 CPATH := $(HOME)/opt/include/bullet/:$(CPATH)
@@ -469,7 +474,7 @@ CPATH := $(HOME)/opt/include/bullet/:$(CPATH)
 LIBS += -lBulletSoftBody -lBulletDynamics -lBulletCollision  -lLinearMath
 endif
 
-ifeq ($(BULLET_UBUNTU),1)
+ifeq ($(BULLET),1)
 DEPEND_UBUNTU += libbullet-dev
 CXXFLAGS += -DRAI_BULLET `pkg-config --cflags bullet`
 LIBS     += `pkg-config --libs bullet`

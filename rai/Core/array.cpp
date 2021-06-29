@@ -1590,7 +1590,7 @@ arr lapack_Ainv_b_sym(const arr& A, const arr& b) {
     HALT("here");
   }
   if(INFO) {
-#if 1
+#if 0
     uint k=(N>3?3:N); //number of required eigenvalues
     rai::Array<integer> IWORK(5*N), IFAIL(N);
     arr WORK(10*(3*N)), Acopy=A;
@@ -1606,12 +1606,12 @@ arr lapack_Ainv_b_sym(const arr& A, const arr& b) {
       dsbevx_((char*)"N", (char*)"I", (char*)"L", &N, &KD, Acopy.p, &LDAB, (double*)nullptr, &LDQ, &VL, &VU, &IL, &IU, &ABSTOL, &M, sig.p, (double*)nullptr, &LDZ, WORK.p, IWORK.p, IFAIL.p, &INFO);
     } else NIY;
     sig.resizeCopy(k);
-#else
-    arr sig, eig;
-    lapack_EigenDecomp(A, sig, eig);
+//    arr sig, eig;
+//    lapack_EigenDecomp(A, sig, eig);
 #endif
     rai::errString <<"lapack_Ainv_b_sym error info = " <<INFO
-                   <<". Typically this is because A is not pos-def.\nsmallest "<<k<<" eigenvalues=" <<sig;
+                   <<". Typically this is because A is not pos-def.";
+//    \nsmallest "<<k<<" eigenvalues=" <<sig;
     throw(rai::errString.p);
 //    THROW("lapack_Ainv_b_sym error info = " <<INFO
 //         <<". Typically this is because A is not pos-def.\nsmallest "<<k<<" eigenvalues=" <<sig);
@@ -2690,6 +2690,16 @@ arr SparseMatrix::unsparse() {
   x.resize(Z.d0, Z.d1).setZero();
   for(uint k=0; k<Z.N; k++) x(elems(k, 0), elems(k, 1)) += Z.elem(k);
   return x;
+}
+
+arr SparseMatrix::getTriplets() const{
+  arr T(Z.N, 3);
+  for(uint k=0; k<Z.N; k++){
+    T.p[3*k+0] = elems.p[2*k];
+    T.p[3*k+1] = elems.p[2*k+1];
+    T.p[3*k+2] = Z.p[k];
+  }
+  return T;
 }
 
 } //namespace rai

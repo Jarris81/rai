@@ -27,8 +27,10 @@ typedef std::function<void(arr& y, arr& Jy, const arr& x)> VectorFunction;
 struct Conv_ScalarProblem_MathematicalProgram : MathematicalProgram {
   ScalarFunction f;
   uint xDim;
+  arr bounds_lo, bounds_up;
   Conv_ScalarProblem_MathematicalProgram(const ScalarFunction& f, uint xDim): f(f), xDim(xDim) {}
   uint getDimension() { return xDim; }
+  void getBounds(arr& _bounds_lo, arr& _bounds_up) { _bounds_lo=bounds_lo; _bounds_up=bounds_up; }
   void getFeatureTypes(ObjectiveTypeA& ot) { ot = {OT_f}; }
   void evaluate(arr& phi, arr& J, const arr& x) {
     double y = f(J, NoArr, x);
@@ -38,6 +40,8 @@ struct Conv_ScalarProblem_MathematicalProgram : MathematicalProgram {
   void getFHessian(arr& H, const arr& x) {
     f(NoArr, H, x);
   }
+
+  void setBounds(double lo, double up){ bounds_lo.resize(xDim) = lo;  bounds_up.resize(xDim) = up; }
 };
 
 struct Conv_MathematicalProgram_ScalarProblem : ScalarFunction {
@@ -113,6 +117,9 @@ struct Conv_MathematicalProgram_ScalarProblem : ScalarFunction {
 
 bool checkJacobianCP(MathematicalProgram& P, const arr& x, double tolerance);
 bool checkHessianCP(MathematicalProgram& P, const arr& x, double tolerance);
+bool checkInBound(MathematicalProgram& P, const arr& x);
+void boundClip(MathematicalProgram& P, arr& x);
+void boundClip(arr& y, const arr& bound_lo, const arr& bound_up);
 bool checkDirectionalGradient(const ScalarFunction& f, const arr& x, const arr& delta, double tolerance);
 bool checkDirectionalJacobian(const VectorFunction& f, const arr& x, const arr& delta, double tolerance);
 

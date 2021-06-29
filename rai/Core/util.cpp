@@ -96,6 +96,7 @@ bool IOraw=false;
 bool noLog=true;
 uint lineCount=1;
 int verboseLevel=-1;
+std::string initDir;
 
 std::chrono::system_clock::time_point startTime;
 double timerStartTime=0.;
