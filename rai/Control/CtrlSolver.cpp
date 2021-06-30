@@ -11,8 +11,8 @@
 
 #include "CtrlTargets.h"
 
-CtrlSolver::CtrlSolver(const rai::Configuration& _C, double _tau, uint k_order)
-  : tau(_tau) {
+CtrlSolver::CtrlSolver(rai::Configuration& _C, double _tau, uint k_order)
+        : tau(_tau) {
   komo.setModel(_C, true);
   komo.setTiming(1., 1, _tau, k_order);
   komo.setupPathConfig();
@@ -105,13 +105,8 @@ void CtrlSolver::update(const arr& q_real, const arr& qDot_real, rai::Configurat
     }
   }
   for(const auto& sc : symbolicCommands){
-<<<<<<< HEAD
       //we only care about run
       if(!sc->isCondition) sc->run(C);
-=======
-    //we only care about run
-    if(!sc->isCondition) sc->run(C);
->>>>>>> 7c2fd447230c9f53c73757a67f8ce6ee231d8bfc
   }
 }
 
