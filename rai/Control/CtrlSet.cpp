@@ -37,9 +37,21 @@ bool CtrlSet::canBeInitiated(const rai::Configuration& pathConfig) const {
   return isFeasible(*this, pathConfig, true);
 }
 
+bool CtrlSet::isConverged(const rai::Configuration& pathConfig) const {
+  return isFeasible(*this, pathConfig, false);
+}
 
-bool CtrlSet::isConverged(const rai::Configuration& Ctuple) const {
-  return isFeasible(*this, Ctuple, false);
+void CtrlSet::addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate) {
+
+  //rai::Frame *gripper = Ctuple.getFrame(command.elem(2));
+  //rai::Frame *object = Ctuple.getFrame(command.elem(3));
+  shared_ptr<CtrlSymCommand> ptr;
+
+  ptr = make_shared<CtrlSymCommand>();
+  ptr->command = commandType;
+  ptr->isCondition=isImmediate;
+  ptr->frames=frames;
+  symbolicCommands.append(ptr);
 }
 
 void CtrlSet::addSymbolicCommand(CtrlSymCommandType commandType, StringA frames, bool isImmediate) {

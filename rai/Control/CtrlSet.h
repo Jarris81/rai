@@ -32,7 +32,6 @@ struct CtrlSet {
 
   void report(ostream& os=cout) const;
 
-
   bool canBeInitiated(const rai::Configuration& Ctuple) const;
   bool isConverged(const rai::Configuration& Ctuple) const;
   rai::Array<shared_ptr<CtrlObjective>> getObjectives();
@@ -42,6 +41,9 @@ struct CtrlSet {
 //===========================================================================
 
 bool isFeasible(const CtrlSet& CS, const rai::Configuration& pathConfig, bool initOnly=true, double eqPrecision=1e-4);
+
+
+
 
 
 CtrlSet operator+(const CtrlSet& A, const CtrlSet& B);

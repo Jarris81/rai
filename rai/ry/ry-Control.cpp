@@ -60,9 +60,6 @@ void init_CtrlSet(pybind11::module& m) {
   })
     .def("feat", [](std::shared_ptr<CtrlObjective>& self){
       return self->feat;
-  })
-    .def("getOriginalTarget", [](std::shared_ptr<CtrlObjective>& self){
-      return self->originalTarget;
   });
   pybind11::class_<CtrlSymCommand, shared_ptr<CtrlSymCommand>>(m, "SymbolicCommand")
     .def(pybind11::init<>())
@@ -86,6 +83,7 @@ void init_CtrlSet(pybind11::module& m) {
   ENUMVAL(SC, CLOSE_GRIPPER)
   .export_values();
 
+};
 
 void init_CtrlSolver(pybind11::module& m) {
   pybind11::class_<CtrlSolver, std::shared_ptr<CtrlSolver>>(m, "CtrlSolver", "A control solver")

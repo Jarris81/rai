@@ -65,7 +65,8 @@ void init_Feature(pybind11::module& m) {
       list.append(C->frames.elem(i)->name().p);
     }
     return list;
-  });
+  })
+  ;
 }
 
 #endif
