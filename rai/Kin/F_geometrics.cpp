@@ -26,8 +26,7 @@ void F_AboveBox::phi2(arr& y, arr& J, const FrameL& F) {
   arr proj({2,3}, {1,0,0,0,1,0});
   pos.y = proj * pos.y;
   pos.J = proj * pos.J;
-  double radMargin = margin + box->radius();
-  arr range = { .5*box->size(0)-radMargin, .5*box->size(1)-radMargin };
+  arr range = { .5*box->size(0)-margin, .5*box->size(1)-margin };
 
   y.setBlockVector(pos.y - range, -pos.y - range);
   J.setBlockMatrix(pos.J, -pos.J);

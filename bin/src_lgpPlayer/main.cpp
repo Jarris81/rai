@@ -74,9 +74,6 @@ void playLGP(const char* folFile, const char* gFile){
   C.addFile(gFile);
   rai::LGP_Tree lgp(C, folFile);
 
-  //-- we need a goal - the generic domain logic does not define one
-  lgp.fol.addTerminalRule(rai::getParameter<rai::String>("goal",STRING("{}")));
-
   cout <<"*** initial FOL world:\n";
   cout <<"--- KB graph:\n";
   lgp.fol.write(cout);
@@ -86,12 +83,7 @@ void playLGP(const char* folFile, const char* gFile){
   lgp.fol.writePDDLproblem(cout);
   lgp.fol.writePDDLfiles("z");
 
-
-  if(rai::checkParameter<bool>("solve")){
-    lgp.run();
-  }else{
-    lgp.player();
-  }
+  lgp.player();
 }
 
 
