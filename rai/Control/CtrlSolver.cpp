@@ -105,8 +105,13 @@ void CtrlSolver::update(const arr& q_real, const arr& qDot_real, rai::Configurat
     }
   }
   for(const auto& sc : symbolicCommands){
+<<<<<<< HEAD
       //we only care about run
       if(!sc->isCondition) sc->run(C);
+=======
+    //we only care about run
+    if(!sc->isCondition) sc->run(C);
+>>>>>>> 7c2fd447230c9f53c73757a67f8ce6ee231d8bfc
   }
 }
 

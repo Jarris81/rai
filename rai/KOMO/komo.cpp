@@ -1332,34 +1332,36 @@ CHECK_EQ(M, featureValues.N, "");
   report.newNode<double>("eq", {}, totalH);
   report.newNode<double>("f", {}, totalF);
 
-  //-- write a nice gnuplot file
-  ofstream fil("z.costReport");
-  //first line: legend
-  for(auto c:objectives) fil <<c->name <<','<<' ';
-  for(auto c:objectives) if(c->type==OT_ineq && dualSolution.N) fil <<c->name <<"_dual ";
-  fil <<endl;
-
-  //rest: just the matrix
-  if(true) { // && !dualSolution.N) {
-    err.write(fil, nullptr, nullptr, "  ");
-  } else {
-    dualSolution.reshape(T, dualSolution.N/(T));
-    catCol(err, dualSolution).write(fil, nullptr, nullptr, "  ");
-  }
-  fil.close();
-
-  ofstream fil2("z.costReport.plt");
-  fil2 <<"set key autotitle columnheader" <<endl;
-  fil2 <<"set title 'costReport ( plotting sqrt(costs) )'" <<endl;
-  fil2 <<"plot 'z.costReport' \\" <<endl;
-  for(uint i=1; i<=objectives.N; i++) fil2 <<(i>1?"  ,''":"     ") <<" u (($0+1)/" <<stepsPerPhase <<"):"<<i<<" w l lw 3 lc " <<i <<" lt " <<1-((i/10)%2) <<" \\" <<endl;
-  if(dualSolution.N) for(uint i=0; i<objectives.N; i++) fil2 <<"  ,'' u (($0+1)/" <<stepsPerPhase <<"):"<<1+objectives.N+i<<" w l \\" <<endl;
-  fil2 <<endl;
-  fil2.close();
-
   if(gnuplt) {
+    //-- write a nice gnuplot file
+    ofstream fil("z.costReport");
+    //first line: legend
+    for(auto c:objectives) fil <<c->name <<',' <<' ';
+    for(auto c:objectives) if(c->type==OT_ineq && dualSolution.N) fil <<c->name <<"_dual ";
+    fil <<endl;
+
+    //rest: just the matrix
+    if(true) { // && !dualSolution.N) {
+      err.write(fil, nullptr, nullptr, "  ");
+    } else {
+      dualSolution.reshape(T, dualSolution.N/(T));
+      catCol(err, dualSolution).write(fil, nullptr, nullptr, "  ");
+    }
+    fil.close();
+
+    ofstream fil2("z.costReport.plt");
+    fil2 <<"set key autotitle columnheader" <<endl;
+    fil2 <<"set title 'costReport ( plotting sqrt(costs) )'" <<endl;
+    fil2 <<"plot 'z.costReport' \\" <<endl;
+    for(uint i=1; i<=objectives.N; i++) fil2 <<(i>1?"  ,''":"     ") <<" u (($0+1)/" <<stepsPerPhase <<"):"<<i<<" w l lw 3 lc " <<i <<" lt " <<1-((i/10)%2) <<" \\" <<endl;
+    if(dualSolution.N) for(uint i=0; i<objectives.N; i++) fil2 <<"  ,'' u (($0+1)/" <<stepsPerPhase <<"):"<<1+objectives.N+i<<" w l \\" <<endl;
+    fil2 <<endl;
+    fil2.close();
+
+    if(gnuplt) {
 //      cout <<"KOMO Report\n" <<report <<endl;
-    gnuplot("load 'z.costReport.plt'");
+      gnuplot("load 'z.costReport.plt'");
+    }
   }
 
   return report;

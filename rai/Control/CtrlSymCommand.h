@@ -5,7 +5,6 @@
 #pragma once
 
 #include "../Kin/kin.h"
-#pragma once
 
 #include "CtrlObjective.h"
 #include "CtrlSymCommand.h"
@@ -20,6 +19,7 @@ struct CtrlSymCommand {
     StringA frames;
 
     CtrlSymCommand();//CtrlSymCommandType command, bool isImmediate, rai::String gripper_name, rai::String object_name);
+
 
     bool isConverged(const rai::Configuration& C);
 

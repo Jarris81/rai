@@ -36,6 +36,10 @@ arr CtrlObjective::getValue(CtrlSolver& cp) {
 
 void CtrlObjective::resetState() { if(movingTarget) movingTarget->resetState(); status=AS_init; }
 
+void CtrlObjective::setOriginalTarget(const arr& original_target){
+  originalTarget = original_target;
+}
+
 //arr CtrlObjective::update_y(const ConfigurationL& Ctuple) {
 //  arr y_old = y;
 //  feat->eval(y, J_y, Ctuple);

@@ -14,7 +14,6 @@ bool CtrlSymCommand::isConverged(const rai::Configuration& C) {
       rai::Frame *gripper = C.getFrame(this->frames.elem(0));
       rai::Frame *object = C.getFrame(this->frames.elem(1));
 
-
       //if object has as parent gripper, its grasping
       if(object->parent != gripper) return false;
       else return true;
@@ -23,6 +22,7 @@ bool CtrlSymCommand::isConverged(const rai::Configuration& C) {
       rai::Frame *gripper = C.getFrame(this->frames.elem(0));
       rai::Frame *object = C.getFrame(this->frames.elem(1));
 
+      //is object has as parent gripper, its grasping
       //check if gripper has a child children
       for(auto child: gripper->children){
         if(child == object){
@@ -37,8 +37,6 @@ bool CtrlSymCommand::isConverged(const rai::Configuration& C) {
       cout<<"Undefined symbolic command, please add definition"<<endl;
       return false;
     }
-
-
   }
 }
 
@@ -64,9 +62,7 @@ bool CtrlSymCommand::run(rai::Configuration& C) {
       return false;
     }
 
-
   }
   // should not happen
   return false;
 }
-
