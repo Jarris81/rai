@@ -45,8 +45,8 @@ void rai::Transformation_Qtoken::operator=(const rai::Transformation& _Q) { f.Q=
 
 bool rai_Kin_frame_ignoreQuatNormalizationWarning = false;
 
-rai::Frame::Frame(Configuration& _C, const Frame* copyFrame)
-  : C(_C) {
+rai::Frame::Frame(Configuration& _K, const Frame* copyFrame)
+  : C(_K) {
 
   ID=C.frames.N;
   C.frames.append(this);
@@ -113,7 +113,7 @@ void rai::Frame::calc_Q_from_parent(bool enforceWithinJoint) {
 
   Q.setDifference(parent->ensure_X(), X);
   if(joint && enforceWithinJoint) {
-    arr q = joint->calcDofsFromConfig();
+    arr q = joint->calc_q_from_Q(Q);
     joint->setDofs(q, 0);
   }
   _state_updateAfterTouchingQ();
@@ -534,7 +534,7 @@ arr rai::Frame::getMeshCorePoints() const {
 
 arr rai::Frame::getJointState() const {
   CHECK(joint, "cannot setJointState for a non-joint");
-  return joint->calcDofsFromConfig();
+  return joint->calc_q_from_Q(Q);
 }
 
 /***********************************************************/
@@ -614,20 +614,14 @@ bool rai::Frame::isChildOf(const rai::Frame* par, int order) const {
   return false;
 }
 
-//===========================================================================
-
-const rai::Joint*rai::Dof::joint() const{ return dynamic_cast<const Joint*>(this); }
-
-//===========================================================================
-
 rai::Joint::Joint(rai::Frame& f, rai::JointType _type) : Joint(f, (Joint*)nullptr) {
   CHECK(frame->parent || _type==JT_tau, "a frame without parent cannot be a joint");
   setType(_type);
 }
 
-rai::Joint::Joint(Frame& f, Joint* copyJoint) {
-  CHECK(!f.joint, "the Link already has a Joint");
-  frame = &f;
+rai::Joint::Joint(Frame& f, Joint* copyJoint)
+  : frame(&f) {
+  CHECK(!frame->joint, "the Link already has a Joint");
   frame->joint = this;
   frame->C.reset_q();
 
@@ -679,6 +673,11 @@ void rai::Joint::setMimic(rai::Joint* j, bool unsetPreviousMimic){
     mimic=j;
     mimic->mimicers.append(this);
   }
+}
+
+uint rai::Joint::qDim() {
+  if(dim==UINT_MAX) dim=getDimFromType();
+  return dim;
 }
 
 void rai::Joint::setDofs(const arr& q_full, uint _qIndex) {
@@ -817,9 +816,8 @@ void rai::Joint::setDofs(const arr& q_full, uint _qIndex) {
   }
 }
 
-arr rai::Joint::calcDofsFromConfig() const {
+arr rai::Joint::calc_q_from_Q(const rai::Transformation& Q) const {
   arr q;
-  const rai::Transformation& Q=frame->Q;
   switch(type) {
     case JT_hingeX:
     case JT_hingeY:
@@ -1124,14 +1122,14 @@ void rai::Joint::read(const Graph& G) {
     setDofs(q0, 0);
   } else {
     //    link->Q.setZero();
-    q0 = calcDofsFromConfig();
+    q0 = calc_q_from_Q(frame->Q);
   }
 
   //limit
   arr ctrl_limits;
   G.get(limits, "limits");
   if(limits.N && type!=JT_rigid && !mimic) {
-    CHECK(limits.N>=2*dim/* || limits.N==2*qDim()+3*/, "parsed limits have wrong dimension: either lo-hi or lo-hi-vel-eff-acc PER DOF");
+    CHECK(limits.N>=2*qDim()/* || limits.N==2*qDim()+3*/, "parsed limits have wrong dimension: either lo-hi or lo-hi-vel-eff-acc PER DOF");
   }
   G.get(ctrl_limits, "ctrl_limits");
   if(ctrl_limits.N && type!=JT_rigid) {

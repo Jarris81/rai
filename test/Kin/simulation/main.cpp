@@ -123,7 +123,7 @@ void testOpenClose(){
 
   double tau = .01;
 
-  S.closeGripper("r_gripper");
+  S.closeGripper("R_gripper");
   for(uint t=0;;t++){
     rai::wait(tau);
 
@@ -132,10 +132,10 @@ void testOpenClose(){
     C.watch();
 
     S.step({}, tau, S._none);
-    if(S.getGripperIsClose("r_gripper")) break;
+    if(S.getGripperIsClose("R_gripper")) break;
   }
 
-  S.openGripper("r_gripper");
+  S.openGripper("R_gripper");
   for(uint t=0;;t++){
     rai::wait(tau);
 
@@ -144,7 +144,7 @@ void testOpenClose(){
     C.watch();
 
     S.step({}, tau, S._none);
-    if(S.getGripperIsOpen("r_gripper")) break;
+    if(S.getGripperIsOpen("R_gripper")) break;
   }
 }
 
