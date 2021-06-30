@@ -1164,21 +1164,16 @@ void KOMO::setupPathConfig() {
   }
   timeSlices = pathConfig.frames;
 
-  //deactivate prefix dofs
-  pathConfig.calc_indexedActiveJoints();
-  uint firstID = timeSlices(k_order, 0)->ID;
-  for(Dof* dof:pathConfig.activeJoints){
-    if(dof->frame->ID < firstID) dof->active=false;
+  //select only the non-prefix joints as active, and only joints that have previously been active
+  FrameL activeJoints;
+  for(uint t=0; t<T; ++t){
+    for(auto* f:timeSlices[t + k_order]) {
+      if(f->joint && f->joint->active){
+        activeJoints.append(f);
+      }
+    }
   }
-  pathConfig.calc_indexedActiveJoints();
-//  for(uint t=0; t<T; ++t){
-//    for(auto* f:timeSlices[t + k_order]) {
-//      if(f->joint && f->joint->active){
-//        activeJoints.append(f);
-//      }
-//    }
-//  }
-//  pathConfig.selectJoints(activeJoints);
+  pathConfig.selectJoints(activeJoints); 
 
   pathConfig.ensure_q();
   pathConfig.checkConsistency();

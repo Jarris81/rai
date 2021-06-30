@@ -582,8 +582,8 @@ void Configuration::setJointState(const arr& _q, const FrameL& F) {
   }
   for(Frame* f:F) {
     for(ForceExchange* c: f->forces) if(&c->a==f){
-      c->setDofs(q, c->qIndex);
-      nd += c->getDimFromType();
+      c->calc_F_from_q(q, c->qIndex);
+      nd += c->qDim();
     }
   }
   CHECK_EQ(_q.N, nd, "given q-vector has wrong size");
@@ -728,17 +728,18 @@ arr Configuration::getLimits() const {
   arr limits(N, 2);
   limits.setZero();
   for(Dof* j:activeJoints) {
-    for(uint k=0; k<j->dim; k++) { //in case joint has multiple dimensions
+    uint i=j->qIndex;
+    uint d=j->dim;
+    for(uint k=0; k<d; k++) { //in case joint has multiple dimensions
       if(j->limits.N) {
-        limits(j->qIndex+k, 0) = j->limits.elem(2*k+0); //lo
-        limits(j->qIndex+k, 1) = j->limits.elem(2*k+1); //up
+        limits(i+k, 0)=j->limits(2*k+0); //lo
+        limits(i+k, 1)=j->limits(2*k+1); //up
       }
     }
   }
-#if 0
   for(ForceExchange* f: forces) {
     uint i=f->qIndex;
-    uint d=f->getDimFromType();
+    uint d=f->qDim();
     CHECK_EQ(d, 6, "");
     for(uint k=0; k<3; k++) {
       limits(i+k, 0)=-10.; //lo
@@ -749,7 +750,6 @@ arr Configuration::getLimits() const {
       limits(i+k, 1)=+1.; //up
     }
   }
-#endif
 //    cout <<"limits:" <<limits <<endl;
   return limits;
 }
@@ -1037,14 +1037,12 @@ bool Configuration::checkConsistency() const {
 //          myqdim += 2*j->dim;
       }
     }
-#if 0
     for(ForceExchange* c: forces) {
 //      CHECK_EQ(c->qDim(), 6, "");
       CHECK_EQ(c->qIndex, myqdim, "joint indexing is inconsistent");
-      myqdim += c->getDimFromType();
+      myqdim += c->qDim();
     }
     CHECK_EQ(myqdim, q.N, "qdim is wrong");
-#endif
 
     //consistency with Q
     for(Frame* f : frames) if(f->joint){
@@ -1255,18 +1253,10 @@ void Configuration::calc_indexedActiveJoints(bool resetActiveJointSet) {
   if(resetActiveJointSet){
     reset_q();
 
-    //-- collect active dofs
+    //-- collect active joints
     activeJoints.clear();
-    for(Frame* f:frames){
-      if(f->joint && f->joint->active && f->joint->type!=JT_rigid){
-        activeJoints.append(f->joint);
-      }
-      for(rai::ForceExchange* fex:f->forces){
-        if(fex->frame==f && fex->active){
-          activeJoints.append(fex);
-        }
-      }
-    }
+    for(Frame* f:frames) if(f->joint && f->joint->active && f->joint->type!=JT_rigid)
+      activeJoints.append(f->joint);
   }else{
     //we assume the activeJoints were set properly before!
   }
@@ -1287,12 +1277,10 @@ void Configuration::calc_indexedActiveJoints(bool resetActiveJointSet) {
       j->qIndex = j->mimic->qIndex;
     }
   }
-#if 0
   for(ForceExchange* c: forces) {
     c->qIndex = qcount;
     qcount += c->qDim();
   }
-#endif
 
   //-- resize q
   q.resize(qcount).setZero();
@@ -1315,14 +1303,14 @@ void Configuration::calc_indexedActiveJoints(bool resetActiveJointSet) {
 }
 
 
-void Configuration::calcDofsFromConfig() {
+void Configuration::calc_q_from_Q() {
   ensure_indexedJoints();
 
   q.setZero();
   qInactive.setZero();
 
   uint n=0;
-  //-- active dofs
+  //-- active joints (part of the DOFs)
   for(Dof* j: activeJoints) {
     if(j->mimic) continue; //don't count dependent joints
     CHECK_EQ(j->qIndex, n, "joint indexing is inconsistent");
@@ -1337,19 +1325,17 @@ void Configuration::calcDofsFromConfig() {
 //    }
   }
 
-#if 0
   //-- forces (part of the DOFs)
   for(ForceExchange* c: forces) {
     CHECK_EQ(c->qIndex, n, "joint indexing is inconsistent");
-    arr contact_q = c->calcDofsFromConfig();
-    CHECK_EQ(contact_q.N, c->getDimFromType(), "");
+    arr contact_q = c->calc_q_from_F();
+    CHECK_EQ(contact_q.N, c->qDim(), "");
     q.setVectorBlock(contact_q, c->qIndex);
-    n += c->getDimFromType();
+    n += c->qDim();
   }
   CHECK_EQ(n, q.N, "");
-#endif
 
-  //-- inactive dofs
+  //-- inactive joints (not part of DOFs)
   n=0;
   for(Frame* f: frames) if(f->joint && !f->joint->active){ //this includes mimic'ing joints!
     Joint *j = f->joint;
@@ -1381,13 +1367,11 @@ void Configuration::calc_Q_from_q() {
 //      }
     }
   }
-#if 0
   for(ForceExchange* c: forces) {
     CHECK_EQ(c->qIndex, n, "joint indexing is inconsistent");
-    c->setDofs(q, c->qIndex);
-    n += c->getDimFromType();
+    c->calc_F_from_q(q, c->qIndex);
+    n += c->qDim();
   }
-#endif
   CHECK_EQ(n, q.N, "");
 }
 
@@ -2429,7 +2413,7 @@ void Configuration::report(std::ostream& os) const {
 
   os <<"Config: q.N=" <<getJointStateDimension()
      <<" #frames=" <<frames.N
-     <<" #dofs=" <<activeJoints.N
+     <<" #joints=" <<activeJoints.N
      <<" #shapes=" <<nShapes
      <<" #ucertainties=" <<nUc
      <<" #proxies=" <<proxies.N

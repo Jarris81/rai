@@ -192,7 +192,6 @@ struct Dof {
   virtual String name() const = 0;
 
   const Joint* joint() const;
-  const ForceExchange* fex() const;
 };
 
 //===========================================================================

@@ -21,8 +21,9 @@ namespace rai {
 enum ForceExchangeType { FXT_none=-1, FXT_poa=0, FXT_torque=1, FXT_force, FXT_forceZ };
 
 ///Description of a ForceExchange
-struct ForceExchange : Dof, NonCopyable, GLDrawer {
+struct ForceExchange : NonCopyable, GLDrawer {
   Frame &a, &b;
+  uint qIndex=UINT_MAX;
   ForceExchangeType type;
   double scale=1.;
  private:
@@ -37,10 +38,9 @@ struct ForceExchange : Dof, NonCopyable, GLDrawer {
   ~ForceExchange();
 
   void setZero();
-  uint getDimFromType();
-  void setDofs(const arr& q, uint n);
-  arr calcDofsFromConfig() const;
-  String name() const{ return STRING("fex-" <<a.name <<'-' <<b.name); }
+  uint qDim();
+  void calc_F_from_q(const arr& q, uint n);
+  arr calc_q_from_F() const;
 
   virtual double sign(Frame *f) const { if(&a==f) return 1.; return -1.; }
   virtual void kinPOA(arr& y, arr& J) const;
