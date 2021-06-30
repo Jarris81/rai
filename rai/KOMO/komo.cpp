@@ -1336,7 +1336,7 @@ CHECK_EQ(M, featureValues.N, "");
     //-- write a nice gnuplot file
     ofstream fil("z.costReport");
     //first line: legend
-    for(auto c:objectives) fil <<c->name <<' ';
+    for(auto c:objectives) fil <<c->name <<',' <<' ';
     for(auto c:objectives) if(c->type==OT_ineq && dualSolution.N) fil <<c->name <<"_dual ";
     fil <<endl;
 

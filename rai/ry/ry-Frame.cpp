@@ -170,8 +170,8 @@ void init_Frame(pybind11::module& m) {
     //WToken<rai::Configuration> token(*self.config, &self.config->data);
     G.newNode<rai::String>("name", {}, self->name);
     G.newNode<int>("ID", {}, self->ID);
-    self->write(G);
-    if(!G["X"]) G.newNode<arr>("X", {}, self->ensure_X().getArr7d());
+    //self->write(G);
+    //if(!G["X"]) G.newNode<arr>("X", {}, self->ensure_X().getArr7d());
     return graph2dict(G);
   })
 
