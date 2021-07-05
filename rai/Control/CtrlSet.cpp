@@ -46,12 +46,12 @@ void CtrlSet::report(std::ostream& os) const {
   }
 }
 
-bool CtrlSet::canBeInitiated(const rai::Configuration& pathConfig) const {
-  return isFeasible(*this, pathConfig, true);
+bool CtrlSet::canBeInitiated(const rai::Configuration& pathConfig, double eqPrecision) const {
+  return isFeasible(*this, pathConfig, true, eqPrecision);
 }
 
-bool CtrlSet::isConverged(const rai::Configuration& pathConfig) const {
-  return isFeasible(*this, pathConfig, false);
+bool CtrlSet::isConverged(const rai::Configuration& pathConfig, double eqPrecision) const {
+  return isFeasible(*this, pathConfig, false, eqPrecision);
 }
 
 bool isFeasible(const CtrlSet& CS, const rai::Configuration& pathConfig, bool initOnly, double eqPrecision) {

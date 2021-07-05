@@ -30,8 +30,8 @@ struct CtrlSet {
 
   void report(ostream& os=cout) const;
 
-  bool canBeInitiated(const rai::Configuration& pathConfig) const;
-  bool isConverged(const rai::Configuration& pathConfig) const;
+  bool canBeInitiated(const rai::Configuration& pathConfig, double eqPrecision=1e-4) const;
+  bool isConverged(const rai::Configuration& pathConfig, double eqPrecision=1e-4) const;
   rai::Array<shared_ptr<CtrlObjective>> getObjectives();
   rai::Array<shared_ptr<CtrlSymCommand>> getSymbolicCommands();
 };

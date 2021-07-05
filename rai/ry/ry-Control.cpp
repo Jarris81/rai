@@ -26,12 +26,12 @@ void init_CtrlSet(pybind11::module& m) {
 
           .def("addSymbolicCommand", &CtrlSet::addSymbolicCommand)
 
-          .def("canBeInitiated", [](std::shared_ptr<CtrlSet> &self, std::shared_ptr<CtrlSolver> &solver) {
-              return self->canBeInitiated(solver->komo.pathConfig);
+          .def("canBeInitiated", [](std::shared_ptr<CtrlSet> &self, std::shared_ptr<CtrlSolver> &solver, double eqPrecision) {
+              return self->canBeInitiated(solver->komo.pathConfig, eqPrecision);
           })
 
-          .def("isConverged", [](std::shared_ptr<CtrlSet> &self, std::shared_ptr<CtrlSolver> &solver) {
-              return self->isConverged(solver->komo.pathConfig);
+          .def("isConverged", [](std::shared_ptr<CtrlSet> &self, std::shared_ptr<CtrlSolver> &solver, double eqPrecision) {
+              return self->isConverged(solver->komo.pathConfig, eqPrecision);
           })
 
           .def("getObjectives", [](std::shared_ptr<CtrlSet> &self) {
