@@ -23,6 +23,16 @@ ptr<CtrlObjective> CtrlSet::addObjective(const ptr<Feature>& f, ObjectiveType ty
   return t;
 }
 
+ptr<CtrlObjective> CtrlSet::addStartCondition(const ptr<Feature>& f, ObjectiveType type) {
+  std::shared_ptr<CtrlObjective> t = make_shared<CtrlObjective>();
+  t->feat = f;
+  t->type = type;
+  t->transientStep = -1;
+  t->setOriginalTarget(f->target);
+  startConditions.append(t);
+  return t;
+}
+
 shared_ptr<CtrlObjective> CtrlSet::add_qControlObjective(uint order, double _scale, const rai::Configuration& C) {
   return addObjective(symbols2feature(FS_qControl, {}, C, {_scale}, NoArr, order), OT_sos);
 }
@@ -72,6 +82,23 @@ bool isFeasible(const CtrlSet& CS, const rai::Configuration& pathConfig, bool in
     }
     if(!isFeasible) break;
   }
+  // TODO lazy, should combine lists
+  for(const auto& o: CS.startConditions) {
+    if(o->type==OT_ineq || o->type==OT_eq) {
+      if(!initOnly && o->transientStep>0. && o->movingTarget->isTransient) { isFeasible=false; break; }
+      if(!initOnly || o->transientStep<=0.) {
+        arr y, J;
+        o->feat->eval(y, J, o->feat->getFrames(pathConfig));
+        if(o->type==OT_ineq) {
+          for(double& yi : y) if(yi>eqPrecision) { isFeasible=false; break; }
+        }
+        if(o->type==OT_eq) {
+          for(double& yi : y) if(fabs(yi)>eqPrecision) { isFeasible=false; break; }
+        }
+      }
+    }
+    if(!isFeasible) break;
+  }
   //also check symbolic commands
   for (const auto& sc : CS.symbolicCommands){
     // if not converged, and is condition, set is not feasible
@@ -84,9 +111,15 @@ rai::Array<shared_ptr<CtrlObjective>> CtrlSet::getObjectives() {
   return objectives;
 }
 
+rai::Array<shared_ptr<CtrlObjective>> CtrlSet::getStartConditions() {
+  return startConditions;
+}
+
 rai::Array<shared_ptr<CtrlSymCommand>> CtrlSet::getSymbolicCommands() {
   return symbolicCommands;
 }
+
+
 
 CtrlSet operator+(const CtrlSet& A, const CtrlSet& B){
   CtrlSet CS;

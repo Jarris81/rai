@@ -22,6 +22,10 @@ void init_CtrlSet(pybind11::module& m) {
                pybind11::arg("type"),
                pybind11::arg("transientStep") = -1.
           )
+          .def("addStartCondition", &CtrlSet::addStartCondition,
+               pybind11::arg("feature"),
+               pybind11::arg("type")
+          )
           .def("add_qControlObjective", &CtrlSet::add_qControlObjective)
 
           .def("addSymbolicCommand", &CtrlSet::addSymbolicCommand)
@@ -37,6 +41,13 @@ void init_CtrlSet(pybind11::module& m) {
           .def("getObjectives", [](std::shared_ptr<CtrlSet> &self) {
               pybind11::list list;
               for (const auto obj: self->getObjectives()) list.append(obj);
+              //for(const auto obj: self->symbolicCommands) list.append(obj);
+              return list;
+          })
+
+          .def("getStartConditions", [](std::shared_ptr<CtrlSet> &self) {
+              pybind11::list list;
+              for (const auto obj: self->getStartConditions()) list.append(obj);
               //for(const auto obj: self->symbolicCommands) list.append(obj);
               return list;
           })
